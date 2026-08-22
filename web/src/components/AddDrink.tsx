@@ -57,6 +57,7 @@ export function AddDrink({ onAdd }: AddDrinkProps) {
             <span className="sd">
               {formatStandardDrinks(standardDrinks(type.volumeMl, type.abv))} std
             </span>
+            <span className="examples">{type.examples}</span>
           </button>
         ))}
         <button

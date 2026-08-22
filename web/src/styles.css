@@ -254,7 +254,9 @@ button:focus-visible {
 /* ---- drink buttons ---- */
 .drink-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  /* Widened from 6.5rem so a two-brand examples line ("Michelob Ultra, Coors
+     Light") has room to wrap across two words per line instead of one. */
+  grid-template-columns: repeat(auto-fit, minmax(7.25rem, 1fr));
   gap: 0.5rem;
 }
 
@@ -267,7 +269,9 @@ button:focus-visible {
   border-radius: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  min-height: 76px;
+  /* A min, not a fixed height — the examples line varies from one word to a
+     two-line wrap, and flex + gap already lets the button grow to fit it. */
+  min-height: 96px;
 }
 
 /* Custom is a different kind of action from the one-tap presets, and spanning
@@ -292,6 +296,14 @@ button:focus-visible {
 .drink-btn .sd {
   font-size: 0.68rem;
   color: var(--text-dim);
+}
+
+.drink-btn .examples {
+  font-size: 0.62rem;
+  line-height: 1.25;
+  color: var(--text-dim);
+  opacity: 0.8;
+  text-align: center;
 }
 
 /* ---- leaderboard ---- */
