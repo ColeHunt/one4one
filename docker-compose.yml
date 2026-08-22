@@ -1,14 +1,35 @@
 services:
   one4one:
     build: .
+    container_name: one4one
     restart: unless-stopped
-    # Bound to localhost so nginx terminates TLS in front of it.
-    ports:
-      - "127.0.0.1:8080:8080"
+    # No host port publish — rev-proxy reaches this over the internal compose
+    # network by service name (one4one:8080); publishing to the host would let
+    # anyone bypass TLS entirely by hitting <droplet-ip>:8080 directly.
     environment:
       ROOM_TTL_HOURS: "48"
     volumes:
       - one4one-data:/data
 
+  # Reverse proxy + TLS. A container with its own web UI rather than a
+  # hand-edited nginx config, so certs and domains are managed at
+  # https://<droplet-ip>:81 over an SSH tunnel:
+  #   ssh -L 81:localhost:81 root@<droplet-ip>
+  rev-proxy:
+    image: jc21/nginx-proxy-manager:2.15.1
+    container_name: rev-proxy
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:81:81" # admin UI — SSH tunnel only, never exposed publicly
+    volumes:
+      - rev-proxy-config:/data
+      - rev-proxy-le:/etc/letsencrypt
+
 volumes:
   one4one-data:
+  rev-proxy-config:
+  rev-proxy-le:
