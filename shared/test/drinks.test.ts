@@ -55,6 +55,39 @@ describe('standardDrinks', () => {
   });
 });
 
+describe('preset stability', () => {
+  /**
+   * Keys are persisted on every logged drink, so renaming one orphans history
+   * from getDrinkType and its log rows degrade to "Custom". Changing this list
+   * is a deliberate act: update it only alongside a migration for stored rows.
+   */
+  it('keeps its keys stable', () => {
+    expect(DRINK_TYPES.map((type) => type.key)).toEqual([
+      'beer',
+      'light_beer',
+      'ipa',
+      'wine',
+      'shot',
+      'well',
+      'cocktail',
+      'seltzer',
+    ]);
+  });
+
+  it('measures a well drink as one pour, same as a shot', () => {
+    // 44ml is a hair under a true 1.5oz pour, so this lands at 0.992 and
+    // displays as "1 std" — the same tolerance the shot preset is held to.
+    const well = resolveStandardDrinks('well');
+    expect(well).toBeCloseTo(1, 1);
+    // The two are the same pour by definition; drift between them is a bug.
+    expect(well).toBe(resolveStandardDrinks('shot'));
+  });
+
+  it('keeps a craft cocktail measurably bigger than a well drink', () => {
+    expect(resolveStandardDrinks('cocktail')!).toBeGreaterThan(resolveStandardDrinks('well')!);
+  });
+});
+
 describe('resolveStandardDrinks', () => {
   it('resolves every preset to a positive value', () => {
     for (const type of DRINK_TYPES) {

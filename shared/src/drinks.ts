@@ -23,6 +23,12 @@ export interface DrinkType {
 /**
  * Preset drinks. Standard-drink values are derived from volume and ABV with the
  * same formula as custom entries, so nothing is hardcoded twice.
+ *
+ * A preset's `key`, `volumeMl` and `abv` are effectively frozen once anyone has
+ * logged a drink. Standard drinks are computed at insert time and stored, so
+ * changing a measurement makes one button mean two different numbers within a
+ * single night's log; changing a key orphans stored drinks from `getDrinkType`,
+ * and their log rows fall back to "Custom". Labels are free to change.
  */
 export const DRINK_TYPES: DrinkType[] = [
   { key: 'beer', label: 'Beer', emoji: '🍺', volumeMl: 355, abv: 0.05 },
@@ -30,7 +36,10 @@ export const DRINK_TYPES: DrinkType[] = [
   { key: 'ipa', label: 'IPA / tall can', emoji: '🍺', volumeMl: 473, abv: 0.065 },
   { key: 'wine', label: 'Wine', emoji: '🍷', volumeMl: 148, abv: 0.12 },
   { key: 'shot', label: 'Shot', emoji: '🥃', volumeMl: 44, abv: 0.4 },
-  { key: 'cocktail', label: 'Cocktail', emoji: '🍸', volumeMl: 66, abv: 0.4 },
+  // A well highball is one pour plus a mixer, and the mixer contributes no
+  // alcohol — so it measures exactly as a shot does, under its own label.
+  { key: 'well', label: 'Well drink', emoji: '🍹', volumeMl: 44, abv: 0.4 },
+  { key: 'cocktail', label: 'Craft cocktail', emoji: '🍸', volumeMl: 66, abv: 0.4 },
   { key: 'seltzer', label: 'Seltzer', emoji: '🥤', volumeMl: 355, abv: 0.05 },
 ];
 

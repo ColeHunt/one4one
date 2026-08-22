@@ -270,6 +270,15 @@ button:focus-visible {
   min-height: 76px;
 }
 
+/* Custom is a different kind of action from the one-tap presets, and spanning
+   the last row keeps an odd preset count from leaving an orphan beside a gap. */
+.drink-btn-custom {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 0.5rem;
+  min-height: 56px;
+}
+
 .drink-btn .emoji {
   font-size: 1.5rem;
   line-height: 1;
