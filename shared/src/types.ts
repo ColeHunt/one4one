@@ -28,6 +28,21 @@ export interface Drink {
   clientId: string | null;
 }
 
+export interface Match {
+  id: string;
+  /** A key of GAME_TYPES. */
+  gameKey: string;
+  /** 0+ members — empty for a free-for-all with no real "winner", just a loser. */
+  winnerIds: string[];
+  /** 1+ members — a match always has someone who lost, or there's no record to keep. */
+  loserIds: string[];
+  note: string | null;
+  /** Epoch ms the game was played. */
+  playedAt: number;
+  /** Whoever reported it — not necessarily a participant, and the only one who can retract it. */
+  reportedBy: string;
+}
+
 export interface RoomState {
   code: string;
   /** Monotonic revision. Clients ignore snapshots older than the one they hold. */
@@ -35,6 +50,7 @@ export interface RoomState {
   createdAt: number;
   members: Member[];
   drinks: Drink[];
+  matches: Match[];
 }
 
 /** Fields a member is allowed to change about themselves. */
@@ -56,10 +72,19 @@ export interface NewDrink {
   clientId?: string;
 }
 
+export interface NewMatch {
+  gameKey: string;
+  winnerIds: string[];
+  loserIds: string[];
+  note?: string | null;
+}
+
 export type ClientMessage =
   | { t: 'join'; roomCode: string; memberId: string; name: string }
   | { t: 'add_drink'; drink: NewDrink }
   | { t: 'undo_drink'; drinkId: string }
+  | { t: 'report_match'; match: NewMatch }
+  | { t: 'retract_match'; matchId: string }
   | { t: 'update_profile'; patch: ProfilePatch }
   | { t: 'ping' };
 
@@ -74,4 +99,5 @@ export type ServerErrorCode =
   | 'not_joined'
   | 'bad_request'
   | 'rate_limited'
-  | 'too_many_drinks';
+  | 'too_many_drinks'
+  | 'too_many_matches';

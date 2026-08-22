@@ -452,6 +452,79 @@ button:focus-visible {
   font-weight: 700;
 }
 
+/* ---- game picker (report a match) ---- */
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.game-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.75rem 0.4rem;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  min-height: 64px;
+}
+
+.game-btn .emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.game-btn .label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.game-btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+
+/* ---- member picker (winners / losers) ---- */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.85rem;
+  min-height: 40px;
+}
+
+.chip-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.member-chip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.member-chip:disabled {
+  opacity: 0.35;
+}
+
 .toast {
   position: fixed;
   left: 50%;

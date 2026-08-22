@@ -9,12 +9,17 @@ import {
   joinRoom,
   purgeStaleRooms,
   removeDrink,
+  reportMatch,
+  retractMatch,
   sanitiseName,
   updateProfile,
 } from '../src/rooms.js';
 
 const ALICE = 'a'.repeat(32);
 const BOB = 'b'.repeat(32);
+const CARA = 'c'.repeat(32);
+const DAVE = 'd'.repeat(32);
+const STRANGER = 'e'.repeat(32);
 
 beforeEach(() => {
   setDb(openDb(':memory:'));
@@ -208,5 +213,181 @@ describe('client ids', () => {
     joinRoom(code, ALICE, 'Alice');
     addDrink(code, ALICE, { kind: 'beer', clientId: 'x'.repeat(500) });
     expect(getRoomState(code, ALICE).drinks[0]!.clientId).toBeNull();
+  });
+});
+
+describe('matches', () => {
+  function setupRoom() {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    joinRoom(code, CARA, 'Cara');
+    joinRoom(code, DAVE, 'Dave');
+    return code;
+  }
+
+  it('records a 1v1 result and bumps the revision', () => {
+    const code = setupRoom();
+    const before = getRoomState(code, ALICE).rev;
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+    });
+
+    const state = getRoomState(code, ALICE);
+    expect(state.matches).toHaveLength(1);
+    expect(state.rev).toBeGreaterThan(before);
+    expect(match.winnerIds).toEqual([ALICE]);
+    expect(match.loserIds).toEqual([BOB]);
+  });
+
+  it('records a 2v2 team result', () => {
+    const code = setupRoom();
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'flip_cup',
+      winnerIds: [ALICE, BOB],
+      loserIds: [CARA, DAVE],
+    });
+    expect(match.winnerIds).toEqual([ALICE, BOB]);
+    expect(match.loserIds).toEqual([CARA, DAVE]);
+  });
+
+  it('records a free-for-all result with no winner, just a loser', () => {
+    const code = setupRoom();
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'ring_of_fire',
+      winnerIds: [],
+      loserIds: [DAVE],
+    });
+    expect(match.winnerIds).toEqual([]);
+    expect(match.loserIds).toEqual([DAVE]);
+  });
+
+  it('lets a bystander report a match they were not in', () => {
+    const code = setupRoom();
+    const match = reportMatch(code, DAVE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+    });
+    expect(match.reportedBy).toBe(DAVE);
+  });
+
+  it('rejects an unknown game key', () => {
+    const code = setupRoom();
+    expect(() =>
+      reportMatch(code, ALICE, { gameKey: 'chess', winnerIds: [ALICE], loserIds: [BOB] }),
+    ).toThrow(RoomError);
+  });
+
+  it('rejects a winner or loser who is not a room member', () => {
+    const code = setupRoom();
+    expect(() =>
+      reportMatch(code, ALICE, {
+        gameKey: 'beer_pong',
+        winnerIds: [ALICE],
+        loserIds: [STRANGER],
+      }),
+    ).toThrow(RoomError);
+    expect(() =>
+      reportMatch(code, ALICE, {
+        gameKey: 'beer_pong',
+        winnerIds: [STRANGER],
+        loserIds: [BOB],
+      }),
+    ).toThrow(RoomError);
+  });
+
+  it('rejects someone appearing on both sides of the same match', () => {
+    const code = setupRoom();
+    expect(() =>
+      reportMatch(code, ALICE, {
+        gameKey: 'beer_pong',
+        winnerIds: [ALICE, BOB],
+        loserIds: [BOB, CARA],
+      }),
+    ).toThrow(RoomError);
+  });
+
+  it('rejects a match with no losers', () => {
+    const code = setupRoom();
+    expect(() =>
+      reportMatch(code, ALICE, { gameKey: 'beer_pong', winnerIds: [ALICE], loserIds: [] }),
+    ).toThrow(RoomError);
+  });
+
+  it('rejects a report from someone not in the room', () => {
+    const code = setupRoom();
+    expect(() =>
+      reportMatch(code, STRANGER, { gameKey: 'beer_pong', winnerIds: [ALICE], loserIds: [BOB] }),
+    ).toThrow(RoomError);
+  });
+
+  it('de-duplicates repeated ids within a side', () => {
+    const code = setupRoom();
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE, ALICE],
+      loserIds: [BOB],
+    });
+    expect(match.winnerIds).toEqual([ALICE]);
+  });
+
+  it('trims and caps an optional note, storing null when blank', () => {
+    const code = setupRoom();
+    const withNote = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+      note: '  good game  ',
+    });
+    expect(withNote.note).toBe('good game');
+
+    const blank = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+      note: '   ',
+    });
+    expect(blank.note).toBeNull();
+  });
+
+  it('lets the reporter retract their own match', () => {
+    const code = setupRoom();
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+    });
+    retractMatch(code, ALICE, match.id);
+    expect(getRoomState(code, ALICE).matches).toHaveLength(0);
+  });
+
+  it("refuses to retract someone else's reported match", () => {
+    const code = setupRoom();
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+    });
+    expect(() => retractMatch(code, BOB, match.id)).toThrow(RoomError);
+    expect(getRoomState(code, ALICE).matches).toHaveLength(1);
+  });
+
+  it('purges matches along with their room', () => {
+    const now = Date.now();
+    const code = createRoom(now - 72 * 3_600_000);
+    joinRoom(code, ALICE, 'Alice', now - 72 * 3_600_000);
+    joinRoom(code, BOB, 'Bob', now - 72 * 3_600_000);
+    reportMatch(
+      code,
+      ALICE,
+      { gameKey: 'beer_pong', winnerIds: [ALICE], loserIds: [BOB] },
+      now - 72 * 3_600_000,
+    );
+
+    expect(purgeStaleRooms(48, now)).toBe(1);
+    expect(() => getRoomState(code, ALICE)).toThrow(RoomError);
   });
 });

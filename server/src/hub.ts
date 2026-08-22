@@ -8,6 +8,8 @@ import {
   getRoomState,
   joinRoom,
   removeDrink,
+  reportMatch,
+  retractMatch,
   updateProfile,
 } from './rooms.js';
 import type { ClientMessage, ServerErrorCode, ServerMessage } from '../../shared/src/types.js';
@@ -109,6 +111,20 @@ function handleMessage(session: Session, raw: string): void {
       case 'undo_drink': {
         const { roomCode, memberId } = requireJoined(session);
         removeDrink(roomCode, memberId, String(message.drinkId ?? ''), now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'report_match': {
+        const { roomCode, memberId } = requireJoined(session);
+        reportMatch(roomCode, memberId, message.match ?? { gameKey: '', winnerIds: [], loserIds: [] }, now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'retract_match': {
+        const { roomCode, memberId } = requireJoined(session);
+        retractMatch(roomCode, memberId, String(message.matchId ?? ''), now);
         broadcastRoom(roomCode);
         return;
       }

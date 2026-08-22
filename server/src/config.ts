@@ -14,6 +14,7 @@ export const config = {
   /** Guardrails so one room cannot exhaust the box. */
   maxMembersPerRoom: 20,
   maxDrinksPerRoom: 2000,
+  maxMatchesPerRoom: 500,
   maxMessageBytes: 4096,
   /** Client messages allowed per connection per minute. */
   messagesPerMinute: 120,

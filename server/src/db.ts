@@ -63,5 +63,19 @@ function migrate(instance: Db): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_drinks_room ON drinks(room_code, consumed_at);
+
+    CREATE TABLE IF NOT EXISTS matches (
+      id          TEXT PRIMARY KEY,
+      room_code   TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+      game_key    TEXT NOT NULL,
+      winner_ids  TEXT NOT NULL,
+      loser_ids   TEXT NOT NULL,
+      note        TEXT,
+      played_at   INTEGER NOT NULL,
+      reported_by TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_matches_room ON matches(room_code, played_at);
   `);
 }

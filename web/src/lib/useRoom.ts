@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Drink, NewDrink, ProfilePatch, RoomState, ServerMessage } from '@shared/types.js';
+import type {
+  Drink,
+  Match,
+  NewDrink,
+  NewMatch,
+  ProfilePatch,
+  RoomState,
+  ServerMessage,
+} from '@shared/types.js';
 import { resolveStandardDrinks } from '@shared/drinks.js';
 import { RoomSocket, onWake, type ConnectionStatus } from './socket.js';
 import { rememberRoom } from './identity.js';
@@ -9,10 +17,14 @@ export interface RoomView {
   room: RoomState | null;
   /** Confirmed drinks, plus this device's in-flight ones, minus its undone ones. */
   drinks: Drink[];
+  /** Reported game results. Unlike drinks, these have no optimistic local copy — see reportMatch. */
+  matches: Match[];
   error: string | null;
   fatalError: string | null;
   addDrink: (drink: NewDrink) => void;
   undoDrink: (drinkId: string) => void;
+  reportMatch: (match: NewMatch) => void;
+  retractMatch: (matchId: string) => void;
   updateProfile: (patch: ProfilePatch) => void;
   dismissError: () => void;
 }
@@ -133,6 +145,21 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     socketRef.current?.send({ t: 'update_profile', patch });
   }, []);
 
+  // Matches are reported far less often than drinks are logged, so the round
+  // trip to the server and back is imperceptible on a live room — these send
+  // and wait for the next snapshot, the same simple pattern updateProfile
+  // already uses, rather than duplicating addDrink's optimistic/pending/
+  // cancelled machinery for a second data type.
+  const reportMatch = useCallback((match: NewMatch) => {
+    socketRef.current?.send({ t: 'report_match', match });
+  }, []);
+
+  const retractMatch = useCallback((matchId: string) => {
+    socketRef.current?.send({ t: 'retract_match', matchId });
+  }, []);
+
+  const matches = room?.matches ?? [];
+
   const drinks = useMemo(() => {
     const hiddenSet = new Set(hidden);
     const confirmed = (room?.drinks ?? []).filter((drink) => !hiddenSet.has(drink.id));
@@ -152,10 +179,13 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     status,
     room,
     drinks,
+    matches,
     error,
     fatalError,
     addDrink,
     undoDrink,
+    reportMatch,
+    retractMatch,
     updateProfile,
     dismissError,
   };
