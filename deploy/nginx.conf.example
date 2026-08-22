@@ -1,0 +1,42 @@
+# /etc/nginx/sites-available/one4one — symlink into sites-enabled, then
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# Run `sudo certbot --nginx -d drinks.example.com` afterwards; certbot rewrites
+# this file to add the TLS listener and the port-80 redirect.
+
+upstream one4one {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name drinks.example.com;
+
+    # Long enough for a WebSocket to idle between drinks. The app also sends its
+    # own pings, but a short timeout here would still cut the connection.
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+
+    location / {
+        proxy_pass http://one4one;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The realtime channel. Without these two headers the upgrade handshake
+    # fails and the app silently falls back to never updating — this block is
+    # the single most common thing to get wrong when self-hosting it.
+    location /ws {
+        proxy_pass http://one4one;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host       $host;
+        proxy_set_header X-Real-IP  $remote_addr;
+    }
+}

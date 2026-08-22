@@ -1,0 +1,39 @@
+# Install to /etc/systemd/system/one4one.service
+#
+#   sudo useradd --system --home /srv/one4one --shell /usr/sbin/nologin one4one
+#   sudo mkdir -p /var/lib/one4one && sudo chown one4one:one4one /var/lib/one4one
+#   sudo systemctl daemon-reload && sudo systemctl enable --now one4one
+
+[Unit]
+Description=one4one drink tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=one4one
+Group=one4one
+WorkingDirectory=/srv/one4one
+ExecStart=/usr/bin/node server/dist/server/src/index.js
+Restart=always
+RestartSec=2
+
+Environment=NODE_ENV=production
+Environment=PORT=8080
+Environment=DATA_DIR=/var/lib/one4one
+Environment=ROOM_TTL_HOURS=48
+
+# The SQLite file is the only thing this service ever needs to write.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/one4one
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
