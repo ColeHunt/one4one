@@ -7,9 +7,10 @@ interface LeaderboardProps {
   drinks: Drink[];
   meId: string;
   now: number;
+  onSelectMember: (memberId: string) => void;
 }
 
-export function Leaderboard({ members, drinks, meId, now }: LeaderboardProps) {
+export function Leaderboard({ members, drinks, meId, now, onSelectMember }: LeaderboardProps) {
   const rows = members
     .map((member) => {
       const theirs = drinks.filter((drink) => drink.memberId === member.id);
@@ -32,7 +33,12 @@ export function Leaderboard({ members, drinks, meId, now }: LeaderboardProps) {
     <div className="card">
       <h2>The room</h2>
       {rows.map((row) => (
-        <div className="member-row" key={row.member.id}>
+        <button
+          className="member-row"
+          key={row.member.id}
+          onClick={() => onSelectMember(row.member.id)}
+          aria-label={`View ${row.member.name}'s drinks`}
+        >
           <span className="swatch" style={{ background: row.member.color }} aria-hidden="true" />
           <div>
             <div className="member-name">
@@ -50,7 +56,7 @@ export function Leaderboard({ members, drinks, meId, now }: LeaderboardProps) {
               {row.bac == null ? (row.member.shareBac ? 'no est.' : 'private') : formatBac(row.bac)}
             </div>
           </div>
-        </div>
+        </button>
       ))}
       <p className="tiny disclaimer">
         "Standard" counts 14 g of alcohol, so a shot and a pint compare fairly. Estimates are rough

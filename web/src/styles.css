@@ -314,10 +314,18 @@ button:focus-visible {
   gap: 0.65rem;
   padding: 0.55rem 0;
   border-bottom: 1px solid var(--border);
+  /* It's a <button> so a tap opens that person's drink history — reset the
+     button defaults that would otherwise shrink it to content and center it. */
+  width: 100%;
+  text-align: left;
 }
 
 .member-row:last-child {
   border-bottom: none;
+}
+
+.member-row:active {
+  opacity: 0.7;
 }
 
 .swatch {

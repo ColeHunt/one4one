@@ -3,6 +3,7 @@ import { AddDrink } from '../components/AddDrink.js';
 import { DrinkLog } from '../components/DrinkLog.js';
 import { Leaderboard } from '../components/Leaderboard.js';
 import { MeCard } from '../components/MeCard.js';
+import { MemberDrinksSheet } from '../components/MemberDrinksSheet.js';
 import { ProfileSheet } from '../components/ProfileSheet.js';
 import { Timeline } from '../components/Timeline.js';
 import { useRoom } from '../lib/useRoom.js';
@@ -28,6 +29,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
   );
   const [showProfile, setShowProfile] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   // BAC decays with the clock, so the view has to re-render without new data.
   const [tick, setTick] = useState(() => Date.now());
@@ -49,6 +51,12 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
   const myDrinks = useMemo(
     () => drinks.filter((drink) => drink.memberId === memberId),
     [drinks, memberId],
+  );
+
+  const selectedMember = room?.members.find((member) => member.id === selectedMemberId) ?? null;
+  const selectedMemberDrinks = useMemo(
+    () => drinks.filter((drink) => drink.memberId === selectedMemberId),
+    [drinks, selectedMemberId],
   );
 
   async function share() {
@@ -119,7 +127,13 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
             }}
           />
           <AddDrink onAdd={addDrink} />
-          <Leaderboard members={room.members} drinks={drinks} meId={memberId} now={now} />
+          <Leaderboard
+            members={room.members}
+            drinks={drinks}
+            meId={memberId}
+            now={now}
+            onSelectMember={setSelectedMemberId}
+          />
           <Timeline members={room.members} drinks={drinks} meId={memberId} now={now} />
           <DrinkLog drinks={drinks} members={room.members} meId={memberId} onUndo={undoDrink} />
         </>
@@ -132,6 +146,16 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
 
       {showProfile && me && (
         <ProfileSheet me={me} onSave={updateProfile} onClose={() => setShowProfile(false)} />
+      )}
+
+      {selectedMember && (
+        <MemberDrinksSheet
+          member={selectedMember}
+          drinks={selectedMemberDrinks}
+          meId={memberId}
+          onUndo={undoDrink}
+          onClose={() => setSelectedMemberId(null)}
+        />
       )}
 
       {error && <div className="toast">{error}</div>}
