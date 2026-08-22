@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CUSTOM_DRINK_KEY, DRINK_TYPES, ML_PER_OZ, standardDrinks } from '@shared/drinks.js';
 import type { NewDrink } from '@shared/types.js';
-import { formatStandardDrinks } from '../lib/format.js';
+import { formatOzAbv, formatStandardDrinks } from '../lib/format.js';
 
 interface AddDrinkProps {
   onAdd: (drink: NewDrink) => void;
@@ -58,6 +58,7 @@ export function AddDrink({ onAdd }: AddDrinkProps) {
               {formatStandardDrinks(standardDrinks(type.volumeMl, type.abv))} std
             </span>
             <span className="examples">{type.examples}</span>
+            <span className="examples">{formatOzAbv(type.volumeMl, type.abv)}</span>
           </button>
         ))}
         <button

@@ -269,9 +269,9 @@ button:focus-visible {
   border-radius: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  /* A min, not a fixed height — the examples line varies from one word to a
-     two-line wrap, and flex + gap already lets the button grow to fit it. */
-  min-height: 96px;
+  /* A min, not a fixed height — the examples and oz/ABV lines vary from one
+     word to a two-line wrap, and flex + gap already lets the button grow. */
+  min-height: 108px;
 }
 
 /* Custom is a different kind of action from the one-tap presets, and spanning
