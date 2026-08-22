@@ -59,7 +59,11 @@ export function AddDrink({ onAdd }: AddDrinkProps) {
             </span>
           </button>
         ))}
-        <button className="drink-btn" onClick={() => setShowCustom((open) => !open)}>
+        <button
+          className="drink-btn drink-btn-custom"
+          aria-expanded={showCustom}
+          onClick={() => setShowCustom((open) => !open)}
+        >
           <span className="emoji" aria-hidden="true">
             ➕
           </span>
