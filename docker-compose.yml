@@ -1,0 +1,14 @@
+services:
+  one4one:
+    build: .
+    restart: unless-stopped
+    # Bound to localhost so nginx terminates TLS in front of it.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ROOM_TTL_HOURS: "48"
+    volumes:
+      - one4one-data:/data
+
+volumes:
+  one4one-data:
