@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AddDrink } from '../components/AddDrink.js';
 import { DrinkLog } from '../components/DrinkLog.js';
+import { GamesScoreboard } from '../components/GamesScoreboard.js';
 import { Leaderboard } from '../components/Leaderboard.js';
 import { MeCard } from '../components/MeCard.js';
 import { MemberDrinksSheet } from '../components/MemberDrinksSheet.js';
+import { MemberGamesSheet } from '../components/MemberGamesSheet.js';
 import { ProfileSheet } from '../components/ProfileSheet.js';
+import { ReportMatchSheet } from '../components/ReportMatchSheet.js';
 import { Timeline } from '../components/Timeline.js';
 import { useRoom } from '../lib/useRoom.js';
 
@@ -22,14 +25,24 @@ const STATUS_LABEL = {
 } as const;
 
 export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
-  const { status, room, drinks, error, fatalError, addDrink, undoDrink, updateProfile } = useRoom(
-    roomCode,
-    memberId,
-    name,
-  );
+  const {
+    status,
+    room,
+    drinks,
+    matches,
+    error,
+    fatalError,
+    addDrink,
+    undoDrink,
+    reportMatch,
+    retractMatch,
+    updateProfile,
+  } = useRoom(roomCode, memberId, name);
   const [showProfile, setShowProfile] = useState(false);
+  const [showReportMatch, setShowReportMatch] = useState(false);
   const [copied, setCopied] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [selectedGamesMemberId, setSelectedGamesMemberId] = useState<string | null>(null);
 
   // BAC decays with the clock, so the view has to re-render without new data.
   const [tick, setTick] = useState(() => Date.now());
@@ -58,6 +71,17 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
     () => drinks.filter((drink) => drink.memberId === selectedMemberId),
     [drinks, selectedMemberId],
   );
+
+  const selectedGamesMember =
+    room?.members.find((member) => member.id === selectedGamesMemberId) ?? null;
+  const selectedGamesMemberMatches = useMemo(() => {
+    if (!selectedGamesMemberId) return [];
+    return matches.filter(
+      (match) =>
+        match.winnerIds.includes(selectedGamesMemberId) ||
+        match.loserIds.includes(selectedGamesMemberId),
+    );
+  }, [matches, selectedGamesMemberId]);
 
   async function share() {
     const url = `${location.origin}/r/${roomCode}`;
@@ -134,6 +158,13 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
             now={now}
             onSelectMember={setSelectedMemberId}
           />
+          <GamesScoreboard
+            members={room.members}
+            matches={matches}
+            meId={memberId}
+            onSelectMember={setSelectedGamesMemberId}
+            onReportGame={() => setShowReportMatch(true)}
+          />
           <Timeline members={room.members} drinks={drinks} meId={memberId} now={now} />
           <DrinkLog drinks={drinks} members={room.members} meId={memberId} onUndo={undoDrink} />
         </>
@@ -155,6 +186,25 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
           meId={memberId}
           onUndo={undoDrink}
           onClose={() => setSelectedMemberId(null)}
+        />
+      )}
+
+      {showReportMatch && room && (
+        <ReportMatchSheet
+          members={room.members}
+          onReport={reportMatch}
+          onClose={() => setShowReportMatch(false)}
+        />
+      )}
+
+      {selectedGamesMember && (
+        <MemberGamesSheet
+          member={selectedGamesMember}
+          matches={selectedGamesMemberMatches}
+          members={room?.members ?? []}
+          meId={memberId}
+          onRetract={retractMatch}
+          onClose={() => setSelectedGamesMemberId(null)}
         />
       )}
 

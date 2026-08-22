@@ -2,10 +2,13 @@ import { config } from './config.js';
 import { getDb } from './db.js';
 import { generateId, generateRoomCode } from './ids.js';
 import { resolveStandardDrinks } from '../../shared/src/drinks.js';
+import { getGameType } from '../../shared/src/games.js';
 import type {
   Drink,
+  Match,
   Member,
   NewDrink,
+  NewMatch,
   ProfilePatch,
   RoomState,
   Sex,
@@ -29,7 +32,8 @@ export class RoomError extends Error {
       | 'room_full'
       | 'not_joined'
       | 'bad_request'
-      | 'too_many_drinks',
+      | 'too_many_drinks'
+      | 'too_many_matches',
     message: string,
   ) {
     super(message);
@@ -184,6 +188,88 @@ export function removeDrink(
   touch(code, now);
 }
 
+const MAX_NOTE_LENGTH = 140;
+/** A match with more people than this on one side is almost certainly a mis-tap. */
+const MAX_PARTICIPANTS_PER_SIDE = 8;
+
+/**
+ * Records a match result. The reporter only needs to be in the room — not a
+ * participant — so a bystander can report a game two other people just
+ * played, the same honor-system trust the rest of the app already runs on.
+ */
+export function reportMatch(
+  code: string,
+  reporterId: string,
+  input: NewMatch,
+  now = Date.now(),
+): Match {
+  const db = getDb();
+  if (!isMember(code, reporterId)) throw new RoomError('not_joined', 'Join the room first');
+
+  const gameKey = typeof input.gameKey === 'string' ? input.gameKey : '';
+  if (!getGameType(gameKey)) throw new RoomError('bad_request', "That's not a game we know");
+
+  const winnerIds = uniqueIds(input.winnerIds);
+  const loserIds = uniqueIds(input.loserIds);
+  if (loserIds.length === 0) {
+    throw new RoomError('bad_request', 'A match needs at least one loser');
+  }
+  if (winnerIds.length > MAX_PARTICIPANTS_PER_SIDE || loserIds.length > MAX_PARTICIPANTS_PER_SIDE) {
+    throw new RoomError('bad_request', 'That is too many people for one match');
+  }
+  if (winnerIds.some((id) => loserIds.includes(id))) {
+    throw new RoomError('bad_request', "Someone can't be on both sides of the same match");
+  }
+  for (const id of [...winnerIds, ...loserIds]) {
+    if (!isMember(code, id)) throw new RoomError('bad_request', "That's not someone in this room");
+  }
+
+  const total = (
+    db.prepare('SELECT COUNT(*) AS n FROM matches WHERE room_code = ?').get(code) as { n: number }
+  ).n;
+  if (total >= config.maxMatchesPerRoom) {
+    throw new RoomError('too_many_matches', 'This room has logged too many games');
+  }
+
+  const note =
+    typeof input.note === 'string' ? input.note.trim().slice(0, MAX_NOTE_LENGTH) || null : null;
+
+  const id = generateId();
+  db.prepare(
+    `INSERT INTO matches (id, room_code, game_key, winner_ids, loser_ids, note, played_at, reported_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, code, gameKey, JSON.stringify(winnerIds), JSON.stringify(loserIds), note, now, reporterId, now);
+  touch(code, now);
+
+  return { id, gameKey, winnerIds, loserIds, note, playedAt: now, reportedBy: reporterId };
+}
+
+/** Retracts a match. Only whoever reported it can — the same rule removeDrink enforces. */
+export function retractMatch(
+  code: string,
+  memberId: string,
+  matchId: string,
+  now = Date.now(),
+): void {
+  const db = getDb();
+  const result = db
+    .prepare('DELETE FROM matches WHERE id = ? AND room_code = ? AND reported_by = ?')
+    .run(matchId, code, memberId);
+  if (result.changes === 0) {
+    throw new RoomError('bad_request', 'That match is not yours to retract');
+  }
+  touch(code, now);
+}
+
+function uniqueIds(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  for (const value of input) {
+    if (typeof value === 'string') seen.add(value);
+  }
+  return [...seen];
+}
+
 const SEXES: Sex[] = ['male', 'female', 'unspecified'];
 
 export function updateProfile(
@@ -247,6 +333,9 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
   const drinkRows = db
     .prepare('SELECT * FROM drinks WHERE room_code = ? ORDER BY consumed_at ASC')
     .all(code) as DrinkRow[];
+  const matchRows = db
+    .prepare('SELECT * FROM matches WHERE room_code = ? ORDER BY played_at ASC')
+    .all(code) as MatchRow[];
 
   return {
     code: room.code,
@@ -260,6 +349,7 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
       return member;
     }),
     drinks: drinkRows.map(toDrink),
+    matches: matchRows.map(toMatch),
   };
 }
 
@@ -270,6 +360,8 @@ export function purgeStaleRooms(ttlHours = config.roomTtlHours, now = Date.now()
   // Children are removed explicitly: SQLite only cascades when the pragma is on
   // for the connection doing the delete, and this also runs from the cron path.
   db.prepare('DELETE FROM drinks WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM matches WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM members WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
@@ -311,6 +403,16 @@ interface DrinkRow {
   client_id: string | null;
 }
 
+interface MatchRow {
+  id: string;
+  game_key: string;
+  winner_ids: string;
+  loser_ids: string;
+  note: string | null;
+  played_at: number;
+  reported_by: string;
+}
+
 function toMember(row: MemberRow): Member {
   return {
     id: row.id,
@@ -333,5 +435,17 @@ function toDrink(row: DrinkRow): Drink {
     abv: row.abv,
     consumedAt: row.consumed_at,
     clientId: row.client_id,
+  };
+}
+
+function toMatch(row: MatchRow): Match {
+  return {
+    id: row.id,
+    gameKey: row.game_key,
+    winnerIds: JSON.parse(row.winner_ids) as string[],
+    loserIds: JSON.parse(row.loser_ids) as string[],
+    note: row.note,
+    playedAt: row.played_at,
+    reportedBy: row.reported_by,
   };
 }
