@@ -74,6 +74,12 @@ describe('preset stability', () => {
     ]);
   });
 
+  it('gives every preset a non-empty example, so a button never ships blank', () => {
+    for (const type of DRINK_TYPES) {
+      expect(type.examples.trim().length, type.key).toBeGreaterThan(0);
+    }
+  });
+
   it('measures a well drink as one pour, same as a shot', () => {
     // 44ml is a hair under a true 1.5oz pour, so this lands at 0.992 and
     // displays as "1 std" — the same tolerance the shot preset is held to.

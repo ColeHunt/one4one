@@ -18,6 +18,8 @@ export interface DrinkType {
   volumeMl: number;
   /** Alcohol by volume as a fraction, e.g. 0.05 for 5%. */
   abv: number;
+  /** Short "does this match what's in my hand" reference, shown on the button. */
+  examples: string;
 }
 
 /**
@@ -31,16 +33,16 @@ export interface DrinkType {
  * and their log rows fall back to "Custom". Labels are free to change.
  */
 export const DRINK_TYPES: DrinkType[] = [
-  { key: 'beer', label: 'Beer', emoji: '🍺', volumeMl: 355, abv: 0.05 },
-  { key: 'light_beer', label: 'Light beer', emoji: '🍻', volumeMl: 355, abv: 0.042 },
-  { key: 'ipa', label: 'IPA / tall can', emoji: '🍺', volumeMl: 473, abv: 0.065 },
-  { key: 'wine', label: 'Wine', emoji: '🍷', volumeMl: 148, abv: 0.12 },
-  { key: 'shot', label: 'Shot', emoji: '🥃', volumeMl: 44, abv: 0.4 },
+  { key: 'beer', label: 'Beer', emoji: '🍺', volumeMl: 355, abv: 0.05, examples: 'Bud Light, Corona' },
+  { key: 'light_beer', label: 'Light beer', emoji: '🍻', volumeMl: 355, abv: 0.042, examples: 'Michelob Ultra, Coors Light' },
+  { key: 'ipa', label: 'IPA / tall can', emoji: '🍺', volumeMl: 473, abv: 0.065, examples: 'a 16oz tallboy IPA' },
+  { key: 'wine', label: 'Wine', emoji: '🍷', volumeMl: 148, abv: 0.12, examples: 'a 5oz glass, red or white' },
+  { key: 'shot', label: 'Shot', emoji: '🥃', volumeMl: 44, abv: 0.4, examples: 'vodka, tequila, whiskey' },
   // A well highball is one pour plus a mixer, and the mixer contributes no
   // alcohol — so it measures exactly as a shot does, under its own label.
-  { key: 'well', label: 'Well drink', emoji: '🍹', volumeMl: 44, abv: 0.4 },
-  { key: 'cocktail', label: 'Craft cocktail', emoji: '🍸', volumeMl: 66, abv: 0.4 },
-  { key: 'seltzer', label: 'Seltzer', emoji: '🥤', volumeMl: 355, abv: 0.05 },
+  { key: 'well', label: 'Well drink', emoji: '🍹', volumeMl: 44, abv: 0.4, examples: 'vodka soda, rum & Coke' },
+  { key: 'cocktail', label: 'Craft cocktail', emoji: '🍸', volumeMl: 66, abv: 0.4, examples: 'margarita, old fashioned' },
+  { key: 'seltzer', label: 'Seltzer', emoji: '🥤', volumeMl: 355, abv: 0.05, examples: 'White Claw, High Noon' },
 ];
 
 export const CUSTOM_DRINK_KEY = 'custom';
