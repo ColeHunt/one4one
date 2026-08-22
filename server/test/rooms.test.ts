@@ -6,10 +6,12 @@ import {
   addDrink,
   createRoom,
   getRoomState,
+  getWatchState,
   joinRoom,
   purgeStaleRooms,
   removeDrink,
   reportMatch,
+  resolveWatchToken,
   retractMatch,
   sanitiseName,
   updateProfile,
@@ -389,5 +391,67 @@ describe('matches', () => {
 
     expect(purgeStaleRooms(48, now)).toBe(1);
     expect(() => getRoomState(code, ALICE)).toThrow(RoomError);
+  });
+});
+
+describe('spectators', () => {
+  it('gives every room a watch token that resolves back to it', () => {
+    const code = createRoom();
+    const token = getRoomState(code, null).watchToken;
+    expect(token).toMatch(/^[0-9a-f]{32}$/);
+    expect(resolveWatchToken(token)).toBe(code);
+  });
+
+  it('returns null for an unknown token', () => {
+    expect(resolveWatchToken('f'.repeat(32))).toBeNull();
+  });
+
+  it('never includes a code field a spectator could read', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    const state = getWatchState(code);
+    expect('code' in state).toBe(false);
+  });
+
+  it('applies the same shareBac redaction getRoomState does, for everyone', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    updateProfile(code, ALICE, { weightKg: 70, sex: 'female', shareBac: false });
+
+    const watched = getWatchState(code).members.find((m) => m.id === ALICE)!;
+    expect(watched.weightKg).toBeNull();
+    expect(watched.sex).toBe('unspecified');
+
+    // Unlike getRoomState, there is no viewerId a spectator could match — even
+    // the member themselves looks redacted from the spectator's perspective,
+    // because a spectator is never that member.
+    updateProfile(code, ALICE, { shareBac: true });
+    const shared = getWatchState(code).members.find((m) => m.id === ALICE)!;
+    expect(shared.weightKg).toBe(70);
+  });
+
+  it('includes drinks and matches, same as a member sees', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    addDrink(code, ALICE, { kind: 'beer' });
+    reportMatch(code, ALICE, { gameKey: 'beer_pong', winnerIds: [ALICE], loserIds: [BOB] });
+
+    const state = getWatchState(code);
+    expect(state.drinks).toHaveLength(1);
+    expect(state.matches).toHaveLength(1);
+  });
+
+  it('throws for a room that no longer exists', () => {
+    expect(() => getWatchState('ZZZZZZ')).toThrow(RoomError);
+  });
+
+  it('purges a watch token along with its room', () => {
+    const now = Date.now();
+    const code = createRoom(now - 72 * 3_600_000);
+    const token = getRoomState(code, null).watchToken;
+
+    expect(purgeStaleRooms(48, now)).toBe(1);
+    expect(resolveWatchToken(token)).toBeNull();
   });
 });

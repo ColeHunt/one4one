@@ -12,6 +12,7 @@ import type {
   ProfilePatch,
   RoomState,
   Sex,
+  WatchState,
 } from '../../shared/src/types.js';
 
 /**
@@ -65,6 +66,13 @@ export function createRoom(now = Date.now()): string {
     db.prepare(
       'INSERT INTO rooms (code, rev, created_at, last_active_at) VALUES (?, 0, ?, ?)',
     ).run(code, now, now);
+    // One watch token per room, for the lifetime of the room — a spectator link
+    // that never resolves to the room code on the client, only on the server.
+    db.prepare('INSERT INTO room_watch_tokens (token, room_code, created_at) VALUES (?, ?, ?)').run(
+      generateId(),
+      code,
+      now,
+    );
     return code;
   }
   throw new RoomError('bad_request', 'Could not allocate a room code');
@@ -72,6 +80,28 @@ export function createRoom(now = Date.now()): string {
 
 export function roomExists(code: string): boolean {
   return Boolean(getDb().prepare('SELECT code FROM rooms WHERE code = ?').get(code));
+}
+
+/** Looks up the room a watch token belongs to. Null for an unknown or expired token. */
+export function resolveWatchToken(token: string): string | null {
+  const row = getDb()
+    .prepare('SELECT room_code FROM room_watch_tokens WHERE token = ?')
+    .get(token) as { room_code: string } | undefined;
+  return row?.room_code ?? null;
+}
+
+function watchTokenFor(code: string): string {
+  const row = getDb()
+    .prepare('SELECT token FROM room_watch_tokens WHERE room_code = ?')
+    .get(code) as { token: string } | undefined;
+  // Every room gets a token at creation, so this should always be found; the
+  // fallback only matters for a room created before this feature existed.
+  if (row) return row.token;
+  const token = generateId();
+  getDb()
+    .prepare('INSERT INTO room_watch_tokens (token, room_code, created_at) VALUES (?, ?, ?)')
+    .run(token, code, Date.now());
+  return token;
 }
 
 /**
@@ -350,6 +380,44 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
     }),
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
+    watchToken: watchTokenFor(code),
+  };
+}
+
+/**
+ * A spectator's view. Deliberately not "getRoomState with a field removed" —
+ * there is no `code` anywhere in this function's return value or in WatchState
+ * itself, so there is nothing for a future refactor to accidentally leak to
+ * someone who only ever held a watch link. `viewerId` is always null: a
+ * spectator has no identity in the room, the same as anyone who hasn't opted
+ * a member out of BAC sharing would see.
+ */
+export function getWatchState(code: string): WatchState {
+  const db = getDb();
+  const room = db.prepare('SELECT rev FROM rooms WHERE code = ?').get(code) as
+    | { rev: number }
+    | undefined;
+  if (!room) throw new RoomError('room_not_found', 'That room code does not exist');
+
+  const memberRows = db
+    .prepare('SELECT * FROM members WHERE room_code = ? ORDER BY joined_at ASC')
+    .all(code) as MemberRow[];
+  const drinkRows = db
+    .prepare('SELECT * FROM drinks WHERE room_code = ? ORDER BY consumed_at ASC')
+    .all(code) as DrinkRow[];
+  const matchRows = db
+    .prepare('SELECT * FROM matches WHERE room_code = ? ORDER BY played_at ASC')
+    .all(code) as MatchRow[];
+
+  return {
+    rev: room.rev,
+    members: memberRows.map((row) => {
+      const member = toMember(row);
+      if (!member.shareBac) return { ...member, weightKg: null, sex: 'unspecified' };
+      return member;
+    }),
+    drinks: drinkRows.map(toDrink),
+    matches: matchRows.map(toMatch),
   };
 }
 
@@ -362,6 +430,8 @@ export function purgeStaleRooms(ttlHours = config.roomTtlHours, now = Date.now()
   db.prepare('DELETE FROM drinks WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM matches WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM room_watch_tokens WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM members WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);

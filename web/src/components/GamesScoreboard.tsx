@@ -6,7 +6,9 @@ interface GamesScoreboardProps {
   matches: Match[];
   meId: string;
   onSelectMember: (memberId: string) => void;
-  onReportGame: () => void;
+  onReportGame?: () => void;
+  /** A spectator can browse the scoreboard but has no result to report. */
+  readOnly?: boolean;
 }
 
 export function GamesScoreboard({
@@ -15,6 +17,7 @@ export function GamesScoreboard({
   meId,
   onSelectMember,
   onReportGame,
+  readOnly = false,
 }: GamesScoreboardProps) {
   const rows = members
     .map((member) => ({ member, record: recordFor(matches, member.id) }))
@@ -30,9 +33,15 @@ export function GamesScoreboard({
     <div className="card">
       <div className="row between" style={{ marginBottom: '0.6rem' }}>
         <h2 style={{ margin: 0 }}>Scoreboard</h2>
-        <button className="btn btn-ghost tiny" style={{ minHeight: 32, padding: '0.2rem 0.6rem' }} onClick={onReportGame}>
-          Report a game
-        </button>
+        {!readOnly && (
+          <button
+            className="btn btn-ghost tiny"
+            style={{ minHeight: 32, padding: '0.2rem 0.6rem' }}
+            onClick={onReportGame}
+          >
+            Report a game
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (

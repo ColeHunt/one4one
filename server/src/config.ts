@@ -15,6 +15,7 @@ export const config = {
   maxMembersPerRoom: 20,
   maxDrinksPerRoom: 2000,
   maxMatchesPerRoom: 500,
+  maxSpectatorsPerRoom: 50,
   maxMessageBytes: 4096,
   /** Client messages allowed per connection per minute. */
   messagesPerMinute: 120,

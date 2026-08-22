@@ -77,5 +77,13 @@ function migrate(instance: Db): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_matches_room ON matches(room_code, played_at);
+
+    CREATE TABLE IF NOT EXISTS room_watch_tokens (
+      token      TEXT PRIMARY KEY,
+      room_code  TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_watch_tokens_room ON room_watch_tokens(room_code);
   `);
 }

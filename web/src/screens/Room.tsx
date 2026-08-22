@@ -41,6 +41,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
   const [showProfile, setShowProfile] = useState(false);
   const [showReportMatch, setShowReportMatch] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedWatch, setCopiedWatch] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedGamesMemberId, setSelectedGamesMemberId] = useState<string | null>(null);
 
@@ -98,6 +99,25 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
     }
   }
 
+  // A watch token, never the room code — see shared/src/types.ts on WatchState
+  // for why that split exists. Only shown once the first snapshot has the
+  // token in it, so there's never a moment where tapping this does nothing.
+  async function shareWatchLink() {
+    if (!room) return;
+    const url = `${location.origin}/watch/${room.watchToken}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'one4one', text: 'Watch live — no need to join', url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setCopiedWatch(true);
+      window.setTimeout(() => setCopiedWatch(false), 2000);
+    } catch {
+      // The user dismissed the share sheet, or the clipboard is unavailable.
+    }
+  }
+
   if (fatalError) {
     return (
       <div className="app">
@@ -124,14 +144,30 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
         </span>
       </header>
 
-      <div className="card row between">
-        <div>
-          <div className="tiny muted">Room code</div>
-          <div className="code-chip">{roomCode}</div>
+      <div className="card stack">
+        <div className="row between">
+          <div>
+            <div className="tiny muted">Room code</div>
+            <div className="code-chip">{roomCode}</div>
+          </div>
+          <button className="btn" onClick={share}>
+            {copied ? 'Copied' : 'Share'}
+          </button>
         </div>
-        <button className="btn" onClick={share}>
-          {copied ? 'Copied' : 'Share'}
-        </button>
+        {room && (
+          <div className="row between">
+            <p className="tiny muted" style={{ margin: 0 }}>
+              Spectators can watch live without joining or seeing the code.
+            </p>
+            <button
+              className="btn btn-ghost tiny"
+              style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+              onClick={shareWatchLink}
+            >
+              {copiedWatch ? 'Copied' : 'Spectator link'}
+            </button>
+          </div>
+        )}
       </div>
 
       {!room ? (

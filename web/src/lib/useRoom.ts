@@ -54,7 +54,7 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
   const cancelledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const socket = new RoomSocket(roomCode, memberId, name, {
+    const socket = new RoomSocket({ t: 'join', roomCode, memberId, name }, {
       onStatus: setStatus,
       onMessage: (message: ServerMessage) => {
         if (message.t === 'state') {
