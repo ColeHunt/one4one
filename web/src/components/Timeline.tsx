@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { estimateBac } from '@shared/drinks.js';
 import type { Drink, Member } from '@shared/types.js';
-import { formatClock, formatStandardDrinks } from '../lib/format.js';
+import { formatBac, formatClock, formatStandardDrinks } from '../lib/format.js';
 
 interface TimelineProps {
   members: Member[];
@@ -9,6 +10,8 @@ interface TimelineProps {
   now: number;
 }
 
+type Metric = 'drinks' | 'bac';
+
 /** The validated categorical palette has eight slots; past that we fold. */
 const MAX_SERIES = 8;
 
@@ -16,11 +19,26 @@ const MARGIN = { top: 12, right: 14, bottom: 26, left: 34 };
 const HEIGHT = 210;
 const SURFACE = '#1b1b26';
 
+interface Point {
+  t: number;
+  value: number;
+}
+
 interface Series {
   member: Member;
-  /** Cumulative standard drinks after each logged drink. */
-  points: { t: number; total: number }[];
-  total: number;
+  points: Point[];
+  /** Final value shown on the end-dot, in the legend fold count, and ranking. */
+  value: number;
+  lastDrinkAt: number;
+}
+
+interface SeriesData {
+  series: Series[];
+  /** Active people bumped from the chart by the MAX_SERIES cap. */
+  hidden: number;
+  /** People who can't be estimated at all (no weight, or opted out) — BAC only. */
+  ineligible: number;
+  yTop: number;
 }
 
 export function Timeline({ members, drinks, meId, now }: TimelineProps) {
@@ -28,6 +46,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
   const [width, setWidth] = useState(320);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
+  const [metric, setMetric] = useState<Metric>('drinks');
 
   useEffect(() => {
     const element = wrapRef.current;
@@ -39,42 +58,26 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
     return () => observer.disconnect();
   }, []);
 
-  const { series, hidden, domain, maxTotal } = useMemo(() => {
-    const all: Series[] = members.map((member) => {
-      const theirs = drinks
-        .filter((drink) => drink.memberId === member.id)
-        .sort((a, b) => a.consumedAt - b.consumedAt);
-      let running = 0;
-      const points = theirs.map((drink) => {
-        running += drink.standardDrinks;
-        return { t: drink.consumedAt, total: running };
-      });
-      return { member, points, total: running };
-    });
-
-    const ranked = [...all].sort((a, b) => b.total - a.total);
-    // Colour follows the member, never their rank, so slots stay stable as the
-    // ranking churns; only membership of the chart changes.
-    const keep = new Set(ranked.slice(0, MAX_SERIES).map((entry) => entry.member.id));
-    keep.add(meId);
-    const shown = all.filter((entry) => keep.has(entry.member.id) && entry.points.length > 0);
-
+  const domain = useMemo(() => {
     const times = drinks.map((drink) => drink.consumedAt);
     const start = times.length > 0 ? Math.min(...times) : now - 3_600_000;
-    return {
-      series: shown,
-      hidden: all.filter((entry) => entry.points.length > 0).length - shown.length,
-      domain: { start: Math.min(start, now - 900_000), end: now },
-      maxTotal: Math.max(1, ...all.map((entry) => entry.total)),
-    };
-  }, [members, drinks, meId, now]);
+    return { start: Math.min(start, now - 900_000), end: now };
+  }, [drinks, now]);
+
+  const drinkData = useMemo(() => buildDrinkSeries(members, drinks, meId), [members, drinks, meId]);
+  const bacData = useMemo(
+    () => buildBacSeries(members, drinks, meId, domain),
+    [members, drinks, meId, domain],
+  );
+  const { series, hidden, ineligible, yTop } = metric === 'drinks' ? drinkData : bacData;
+  const eligibleCount = members.length - ineligible;
 
   const plotWidth = Math.max(10, width - MARGIN.left - MARGIN.right);
   const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
   const span = Math.max(1, domain.end - domain.start);
 
   const x = (t: number) => MARGIN.left + ((t - domain.start) / span) * plotWidth;
-  const y = (value: number) => MARGIN.top + plotHeight - (value / yMax(maxTotal)) * plotHeight;
+  const y = (value: number) => MARGIN.top + plotHeight - (value / yTop) * plotHeight;
 
   if (drinks.length === 0) {
     return (
@@ -88,6 +91,9 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
   }
 
   const hoverTime = hoverX == null ? null : domain.start + ((hoverX - MARGIN.left) / plotWidth) * span;
+  const ticks = metric === 'drinks' ? drinksYTicks(yTop) : bacYTicks(yTop);
+  const valueAt = metric === 'drinks' ? totalAt : interpolateAt;
+  const formatValue = metric === 'drinks' ? formatStandardDrinks : formatBac;
 
   return (
     <div className="card">
@@ -102,16 +108,39 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
         </button>
       </div>
 
-      {showTable ? (
+      <div className="segmented" style={{ margin: '0.5rem 0' }}>
+        <button aria-pressed={metric === 'drinks'} onClick={() => setMetric('drinks')}>
+          Drinks
+        </button>
+        <button aria-pressed={metric === 'bac'} onClick={() => setMetric('bac')}>
+          BAC
+        </button>
+      </div>
+
+      {metric === 'bac' && series.length === 0 ? (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          {eligibleCount === 0
+            ? "No one has added a weight yet, so there's nothing to estimate. Add yours in Settings."
+            : 'No estimates yet — once someone with a weight logs a drink, this fills in.'}
+        </p>
+      ) : showTable ? (
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.6rem' }}>
           <caption className="tiny muted" style={{ captionSide: 'bottom', textAlign: 'left' }}>
-            Cumulative standard drinks per person.
+            {metric === 'drinks'
+              ? 'Cumulative standard drinks per person.'
+              : "Rough BAC estimate per person, right now."}
           </caption>
           <thead>
             <tr className="tiny muted">
               <th style={{ textAlign: 'left', paddingBottom: '0.3rem' }}>Person</th>
-              <th style={{ textAlign: 'right' }}>Drinks</th>
-              <th style={{ textAlign: 'right' }}>Standard</th>
+              {metric === 'drinks' ? (
+                <>
+                  <th style={{ textAlign: 'right' }}>Drinks</th>
+                  <th style={{ textAlign: 'right' }}>Standard</th>
+                </>
+              ) : (
+                <th style={{ textAlign: 'right' }}>Est. BAC</th>
+              )}
               <th style={{ textAlign: 'right' }}>Last</th>
             </tr>
           </thead>
@@ -119,10 +148,16 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
             {series.map((entry) => (
               <tr key={entry.member.id} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: '0.35rem 0' }}>{entry.member.name}</td>
-                <td style={{ textAlign: 'right' }}>{entry.points.length}</td>
-                <td style={{ textAlign: 'right' }}>{formatStandardDrinks(entry.total)}</td>
+                {metric === 'drinks' ? (
+                  <>
+                    <td style={{ textAlign: 'right' }}>{entry.points.length}</td>
+                    <td style={{ textAlign: 'right' }}>{formatStandardDrinks(entry.value)}</td>
+                  </>
+                ) : (
+                  <td style={{ textAlign: 'right' }}>{formatBac(entry.value)}</td>
+                )}
                 <td style={{ textAlign: 'right' }} className="muted">
-                  {formatClock(entry.points[entry.points.length - 1]!.t)}
+                  {formatClock(entry.lastDrinkAt)}
                 </td>
               </tr>
             ))}
@@ -134,7 +169,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
             width={width}
             height={HEIGHT}
             role="img"
-            aria-label={`Cumulative standard drinks over time for ${series
+            aria-label={`${metric === 'drinks' ? 'Cumulative standard drinks' : 'Estimated BAC'} over time for ${series
               .map((entry) => entry.member.name)
               .join(', ')}`}
             onPointerMove={(event) => {
@@ -144,7 +179,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
             }}
             onPointerLeave={() => setHoverX(null)}
           >
-            {yTicks(maxTotal).map((tick) => (
+            {ticks.map((tick) => (
               <g key={tick}>
                 <line
                   x1={MARGIN.left}
@@ -155,7 +190,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
                   strokeWidth={1}
                 />
                 <text x={0} y={y(tick) + 4} fill="var(--text-dim)" fontSize={10}>
-                  {tick}
+                  {metric === 'drinks' ? tick : tick.toFixed(2)}
                 </text>
               </g>
             ))}
@@ -183,7 +218,11 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
             {series.map((entry) => (
               <path
                 key={entry.member.id}
-                d={stepPath(entry.points, domain.end, x, y)}
+                d={
+                  metric === 'drinks'
+                    ? stepPath(entry.points, domain.end, x, y)
+                    : linePath(entry.points, x, y)
+                }
                 fill="none"
                 stroke={entry.member.color}
                 strokeWidth={2}
@@ -196,7 +235,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
               <circle
                 key={entry.member.id}
                 cx={x(domain.end)}
-                cy={y(entry.total)}
+                cy={y(entry.value)}
                 r={4}
                 fill={entry.member.color}
                 stroke={SURFACE}
@@ -224,7 +263,7 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
                 {series
                   .map(
                     (entry) =>
-                      `${entry.member.name} ${formatStandardDrinks(totalAt(entry.points, hoverTime))}`,
+                      `${entry.member.name} ${formatValue(valueAt(entry.points, hoverTime))}`,
                   )
                   .join(' · ')}
               </span>
@@ -241,10 +280,23 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
           </span>
         ))}
       </div>
+
       {hidden > 0 && (
         <p className="tiny muted" style={{ margin: '0.4rem 0 0' }}>
           Showing {series.length} of {series.length + hidden} people — the rest are in the list
           above.
+        </p>
+      )}
+      {metric === 'bac' && ineligible > 0 && (
+        <p className="tiny muted" style={{ margin: '0.4rem 0 0' }}>
+          {ineligible} more {ineligible === 1 ? "person hasn't" : "people haven't"} added a weight,
+          or {ineligible === 1 ? 'has' : 'have'} kept theirs private.
+        </p>
+      )}
+      {metric === 'bac' && (
+        <p className="tiny disclaimer">
+          Rough estimates from each person's weight and their own log. Never a measure of
+          impairment or of who can drive.
         </p>
       )}
     </div>
@@ -252,15 +304,36 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
 }
 
 /** Round the y domain up to a clean number so ticks land on integers. */
-function yMax(maxTotal: number): number {
+function drinksYMax(maxTotal: number): number {
   return Math.max(2, Math.ceil(maxTotal));
 }
 
-function yTicks(maxTotal: number): number[] {
-  const top = yMax(maxTotal);
+function drinksYTicks(maxTotal: number): number[] {
+  const top = drinksYMax(maxTotal);
   const step = top <= 4 ? 1 : Math.ceil(top / 4);
   const ticks: number[] = [];
   for (let value = 0; value <= top; value += step) ticks.push(value);
+  return ticks;
+}
+
+/** BAC tick spacing scales with the range so a small night still gets useful ticks. */
+function bacTickStep(maxBac: number): number {
+  if (maxBac <= 0.02) return 0.005;
+  if (maxBac <= 0.08) return 0.02;
+  if (maxBac <= 0.16) return 0.04;
+  return 0.05;
+}
+
+function bacYMax(maxBac: number): number {
+  const step = bacTickStep(maxBac);
+  return Math.max(step, Math.ceil(maxBac / step) * step);
+}
+
+function bacYTicks(maxBac: number): number[] {
+  const step = bacTickStep(maxBac);
+  const top = bacYMax(maxBac);
+  const ticks: number[] = [];
+  for (let value = 0; value <= top + 1e-9; value += step) ticks.push(Math.round(value * 1000) / 1000);
   return ticks;
 }
 
@@ -284,33 +357,152 @@ function timeTicks(start: number, end: number): number[] {
   return ticks;
 }
 
+function buildDrinkSeries(members: Member[], drinks: Drink[], meId: string): SeriesData {
+  const all: Series[] = members.map((member) => {
+    const theirs = drinks
+      .filter((drink) => drink.memberId === member.id)
+      .sort((a, b) => a.consumedAt - b.consumedAt);
+    let running = 0;
+    const points = theirs.map((drink) => {
+      running += drink.standardDrinks;
+      return { t: drink.consumedAt, value: running };
+    });
+    return {
+      member,
+      points,
+      value: running,
+      lastDrinkAt: points.length > 0 ? points[points.length - 1]!.t : 0,
+    };
+  });
+
+  const ranked = [...all].sort((a, b) => b.value - a.value);
+  // Colour follows the member, never their rank, so slots stay stable as the
+  // ranking churns; only membership of the chart changes.
+  const keep = new Set(ranked.slice(0, MAX_SERIES).map((entry) => entry.member.id));
+  keep.add(meId);
+  const shown = all.filter((entry) => keep.has(entry.member.id) && entry.points.length > 0);
+
+  return {
+    series: shown,
+    hidden: all.filter((entry) => entry.points.length > 0).length - shown.length,
+    ineligible: 0,
+    yTop: drinksYMax(Math.max(1, ...all.map((entry) => entry.value))),
+  };
+}
+
+/** Regular samples across the domain; drink moments are added on top of these. */
+const BAC_SAMPLE_COUNT = 60;
+
+function buildBacSeries(
+  members: Member[],
+  drinks: Drink[],
+  meId: string,
+  domain: { start: number; end: number },
+): SeriesData {
+  // Someone who opted out has their weight and sex redacted for everyone but
+  // themselves (see rooms.ts), so an estimate for them literally cannot be
+  // computed here — this mirrors the same rule the leaderboard applies.
+  const eligible = members.filter((member) => member.shareBac && member.weightKg != null);
+  const span = Math.max(1, domain.end - domain.start);
+
+  const all: Series[] = eligible.map((member) => {
+    const theirs = drinks.filter((drink) => drink.memberId === member.id);
+    if (theirs.length === 0) return { member, points: [], value: 0, lastDrinkAt: 0 };
+
+    const profile = { weightKg: member.weightKg, sex: member.sex };
+    const sampleTimes = new Set<number>();
+    for (let i = 0; i <= BAC_SAMPLE_COUNT; i += 1) {
+      sampleTimes.add(Math.round(domain.start + (span * i) / BAC_SAMPLE_COUNT));
+    }
+    // A drink is a jump, not a slope — sampling the instant before and the
+    // instant of each drink keeps that jump crisp instead of smoothing it
+    // away between two widely spaced regular samples.
+    for (const drink of theirs) {
+      if (drink.consumedAt < domain.start || drink.consumedAt > domain.end) continue;
+      sampleTimes.add(Math.max(domain.start, drink.consumedAt - 1));
+      sampleTimes.add(drink.consumedAt);
+    }
+    sampleTimes.add(domain.end);
+
+    const points = [...sampleTimes]
+      .sort((a, b) => a - b)
+      .map((t) => ({ t, value: estimateBac(theirs, profile, t) ?? 0 }));
+
+    return {
+      member,
+      points,
+      value: points[points.length - 1]!.value,
+      lastDrinkAt: Math.max(...theirs.map((drink) => drink.consumedAt)),
+    };
+  });
+
+  const ranked = [...all].sort((a, b) => b.value - a.value);
+  const keep = new Set(ranked.slice(0, MAX_SERIES).map((entry) => entry.member.id));
+  keep.add(meId);
+  const shown = all.filter((entry) => keep.has(entry.member.id) && entry.points.length > 0);
+
+  return {
+    series: shown,
+    hidden: all.filter((entry) => entry.points.length > 0).length - shown.length,
+    ineligible: members.length - eligible.length,
+    yTop: bacYMax(Math.max(0, ...all.map((entry) => entry.value))),
+  };
+}
+
 /**
  * Drinks are discrete events, so the line steps rather than sloping: a level
  * run until the drink, then a jump. Sloping between drinks would imply drinking
  * continuously.
  */
 function stepPath(
-  points: { t: number; total: number }[],
+  points: Point[],
   end: number,
   x: (t: number) => number,
   y: (value: number) => number,
 ): string {
   if (points.length === 0) return '';
   const first = points[0]!;
-  const parts = [`M ${x(first.t)} ${y(0)}`, `L ${x(first.t)} ${y(first.total)}`];
+  const parts = [`M ${x(first.t)} ${y(0)}`, `L ${x(first.t)} ${y(first.value)}`];
   for (let i = 1; i < points.length; i += 1) {
     const point = points[i]!;
-    parts.push(`L ${x(point.t)} ${y(points[i - 1]!.total)}`);
-    parts.push(`L ${x(point.t)} ${y(point.total)}`);
+    parts.push(`L ${x(point.t)} ${y(points[i - 1]!.value)}`);
+    parts.push(`L ${x(point.t)} ${y(point.value)}`);
   }
-  parts.push(`L ${x(end)} ${y(points[points.length - 1]!.total)}`);
+  parts.push(`L ${x(end)} ${y(points[points.length - 1]!.value)}`);
   return parts.join(' ');
 }
 
-function totalAt(points: { t: number; total: number }[], time: number): number {
+/**
+ * BAC actually is continuous — it rises the instant a drink lands and decays
+ * steadily after — so unlike the drinks total, a straight connecting line
+ * between samples is the honest shape rather than a simplification.
+ */
+function linePath(points: Point[], x: (t: number) => number, y: (value: number) => number): string {
+  if (points.length === 0) return '';
+  return points.map((point, i) => `${i === 0 ? 'M' : 'L'} ${x(point.t)} ${y(point.value)}`).join(' ');
+}
+
+/** The step value in effect at `time` — correct for a chart that only moves at events. */
+function totalAt(points: Point[], time: number): number {
   let total = 0;
   for (const point of points) {
-    if (point.t <= time) total = point.total;
+    if (point.t <= time) total = point.value;
   }
   return total;
+}
+
+/** Linear interpolation between the two samples bracketing `time`. */
+function interpolateAt(points: Point[], time: number): number {
+  if (points.length === 0) return 0;
+  if (time <= points[0]!.t) return points[0]!.value;
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1]!;
+    const curr = points[i]!;
+    if (time <= curr.t) {
+      const gap = curr.t - prev.t;
+      const frac = gap <= 0 ? 0 : (time - prev.t) / gap;
+      return prev.value + (curr.value - prev.value) * frac;
+    }
+  }
+  return points[points.length - 1]!.value;
 }
