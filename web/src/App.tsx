@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Home } from './screens/Home.js';
 import { Room } from './screens/Room.js';
+import { WatchRoom } from './screens/WatchRoom.js';
 import { getMemberId, getStoredName, storeName } from './lib/identity.js';
 
 /** Room codes live at /r/CODE so a room is a shareable link. */
@@ -9,13 +10,27 @@ function readRoomCode(): string | null {
   return match ? match[1]!.toUpperCase() : null;
 }
 
+/**
+ * Watch links live at /watch/TOKEN — a separate path from /r/:code on
+ * purpose, so a spectator's URL never contains anything that resolves to the
+ * room code on the client. Tokens are the 32-hex ids generateId() produces.
+ */
+function readWatchToken(): string | null {
+  const match = /^\/watch\/([0-9a-f]{32})$/.exec(location.pathname);
+  return match ? match[1]! : null;
+}
+
 export function App() {
   const [roomCode, setRoomCode] = useState<string | null>(readRoomCode);
+  const [watchToken, setWatchToken] = useState<string | null>(readWatchToken);
   const [name, setName] = useState<string>(getStoredName);
   const memberId = getMemberId();
 
   useEffect(() => {
-    const onPop = () => setRoomCode(readRoomCode());
+    const onPop = () => {
+      setRoomCode(readRoomCode());
+      setWatchToken(readWatchToken());
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -29,8 +44,11 @@ export function App() {
 
   const leaveRoom = useCallback(() => {
     setRoomCode(null);
+    setWatchToken(null);
     history.pushState({}, '', '/');
   }, []);
+
+  if (watchToken) return <WatchRoom key={watchToken} token={watchToken} onLeave={leaveRoom} />;
 
   if (!roomCode) return <Home onEnter={enterRoom} initialName={name} />;
 

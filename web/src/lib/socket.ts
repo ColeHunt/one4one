@@ -16,20 +16,20 @@ const MAX_BACKOFF_MS = 15_000;
 export class RoomSocket {
   private socket: WebSocket | null = null;
   private queue: ClientMessage[] = [];
-  private joinMessage: ClientMessage | null = null;
   private attempts = 0;
   private reconnectTimer: number | null = null;
   private heartbeatTimer: number | null = null;
   private closedByUs = false;
 
+  /**
+   * `helloMessage` is sent (and re-sent on every reconnect) as the first thing
+   * on the wire — a member's `join` or a spectator's `watch`. The socket itself
+   * doesn't care which; it only needs something to say hello with.
+   */
   constructor(
-    private readonly roomCode: string,
-    private readonly memberId: string,
-    private readonly name: string,
+    private readonly helloMessage: ClientMessage,
     private readonly handlers: RoomSocketHandlers,
-  ) {
-    this.joinMessage = { t: 'join', roomCode, memberId, name };
-  }
+  ) {}
 
   connect(): void {
     this.closedByUs = false;
@@ -73,7 +73,7 @@ export class RoomSocket {
     socket.onopen = () => {
       this.attempts = 0;
       this.handlers.onStatus('online');
-      if (this.joinMessage) socket.send(JSON.stringify(this.joinMessage));
+      socket.send(JSON.stringify(this.helloMessage));
       const pending = this.queue;
       this.queue = [];
       for (const message of pending) socket.send(JSON.stringify(message));

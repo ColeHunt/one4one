@@ -6,9 +6,11 @@ import {
   RoomError,
   addDrink,
   getRoomState,
+  getWatchState,
   joinRoom,
   removeDrink,
   reportMatch,
+  resolveWatchToken,
   retractMatch,
   updateProfile,
 } from './rooms.js';
@@ -18,6 +20,8 @@ interface Session {
   socket: WebSocket;
   roomCode: string | null;
   memberId: string | null;
+  /** Set once a spectator connects via a watch link. Never set alongside memberId. */
+  watchRoomCode: string | null;
   alive: boolean;
   windowStart: number;
   messagesInWindow: number;
@@ -34,22 +38,31 @@ function sendError(socket: WebSocket, code: ServerErrorCode, message: string): v
 }
 
 /**
- * Push a fresh snapshot to every session in a room. Serialisation happens per
- * viewer because members who opted out of BAC sharing have their weight and sex
- * redacted for everyone else.
+ * Push a fresh snapshot to every session in a room — members and spectators
+ * alike. Serialisation happens per viewer: members who opted out of BAC
+ * sharing have their weight and sex redacted for everyone else, and a
+ * spectator gets a WatchState with no room code in it at all, never a
+ * RoomState with fields stripped out.
  */
 export function broadcastRoom(roomCode: string): void {
   for (const session of sessions.values()) {
-    if (session.roomCode !== roomCode || !session.memberId) continue;
-    try {
-      send(session.socket, {
-        t: 'state',
-        room: getRoomState(roomCode, session.memberId),
-        you: session.memberId,
-      });
-    } catch {
-      // Room disappeared underneath us (purged); drop the session's binding.
-      session.roomCode = null;
+    if (session.roomCode === roomCode && session.memberId) {
+      try {
+        send(session.socket, {
+          t: 'state',
+          room: getRoomState(roomCode, session.memberId),
+          you: session.memberId,
+        });
+      } catch {
+        // Room disappeared underneath us (purged); drop the session's binding.
+        session.roomCode = null;
+      }
+    } else if (session.watchRoomCode === roomCode) {
+      try {
+        send(session.socket, { t: 'watch_state', state: getWatchState(roomCode) });
+      } catch {
+        session.watchRoomCode = null;
+      }
     }
   }
 }
@@ -98,6 +111,31 @@ function handleMessage(session: Session, raw: string): void {
         session.roomCode = code;
         session.memberId = message.memberId;
         broadcastRoom(code);
+        return;
+      }
+
+      case 'watch': {
+        const token = String(message.token ?? '');
+        const roomCode = resolveWatchToken(token);
+        if (!roomCode) {
+          sendError(session.socket, 'invalid_watch_link', "This link doesn't work");
+          return;
+        }
+        let spectators = 0;
+        for (const other of sessions.values()) {
+          if (other.watchRoomCode === roomCode) spectators += 1;
+        }
+        if (spectators >= config.maxSpectatorsPerRoom) {
+          sendError(session.socket, 'too_many_spectators', 'Too many people are already watching');
+          return;
+        }
+        session.watchRoomCode = roomCode;
+        try {
+          send(session.socket, { t: 'watch_state', state: getWatchState(roomCode) });
+        } catch {
+          session.watchRoomCode = null;
+          sendError(session.socket, 'invalid_watch_link', "This link doesn't work");
+        }
         return;
       }
 
@@ -162,6 +200,7 @@ export function attachHub(wss: WebSocketServer): () => void {
       socket,
       roomCode: null,
       memberId: null,
+      watchRoomCode: null,
       alive: true,
       windowStart: Date.now(),
       messagesInWindow: 0,

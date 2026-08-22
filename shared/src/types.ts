@@ -51,6 +51,21 @@ export interface RoomState {
   members: Member[];
   drinks: Drink[];
   matches: Match[];
+  /** Builds the /watch/:token spectator link. Members only — never sent to a spectator. */
+  watchToken: string;
+}
+
+/**
+ * A spectator's view of a room. Deliberately a different shape from RoomState,
+ * not a redacted copy of it — there is no `code` field anywhere on this type,
+ * so there is nothing for a future refactor to accidentally leak to someone
+ * who was only ever handed a watch link.
+ */
+export interface WatchState {
+  rev: number;
+  members: Member[];
+  drinks: Drink[];
+  matches: Match[];
 }
 
 /** Fields a member is allowed to change about themselves. */
@@ -81,6 +96,7 @@ export interface NewMatch {
 
 export type ClientMessage =
   | { t: 'join'; roomCode: string; memberId: string; name: string }
+  | { t: 'watch'; token: string }
   | { t: 'add_drink'; drink: NewDrink }
   | { t: 'undo_drink'; drinkId: string }
   | { t: 'report_match'; match: NewMatch }
@@ -90,6 +106,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { t: 'state'; room: RoomState; you: string }
+  | { t: 'watch_state'; state: WatchState }
   | { t: 'error'; code: ServerErrorCode; message: string }
   | { t: 'pong' };
 
@@ -100,4 +117,6 @@ export type ServerErrorCode =
   | 'bad_request'
   | 'rate_limited'
   | 'too_many_drinks'
-  | 'too_many_matches';
+  | 'too_many_matches'
+  | 'invalid_watch_link'
+  | 'too_many_spectators';
