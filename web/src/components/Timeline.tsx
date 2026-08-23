@@ -15,6 +15,9 @@ type Metric = 'drinks' | 'bac';
 /** The validated categorical palette has eight slots; past that we fold. */
 const MAX_SERIES = 8;
 
+/** How far back the BAC chart's time axis reaches, independent of the drinks chart. */
+const BAC_WINDOW_HOURS = 3;
+
 const MARGIN = { top: 12, right: 14, bottom: 26, left: 34 };
 const HEIGHT = 210;
 const SURFACE = '#1b1b26';
@@ -58,18 +61,29 @@ export function Timeline({ members, drinks, meId, now }: TimelineProps) {
     return () => observer.disconnect();
   }, []);
 
-  const domain = useMemo(() => {
+  const fullDomain = useMemo(() => {
     const times = drinks.map((drink) => drink.consumedAt);
     const start = times.length > 0 ? Math.min(...times) : now - 3_600_000;
     return { start: Math.min(start, now - 900_000), end: now };
   }, [drinks, now]);
 
+  // BAC is a current physiological state, not a running total — a peak from
+  // six hours ago is no longer relevant to "how am I doing right now," and
+  // squeezing the whole night into one axis flattens the recent shape that
+  // actually matters. Capped independently of the drinks chart, which stays
+  // a full-night cumulative view on purpose.
+  const bacDomain = useMemo(() => {
+    const start = Math.max(fullDomain.start, now - BAC_WINDOW_HOURS * 3_600_000);
+    return { start: Math.min(start, now - 900_000), end: now };
+  }, [fullDomain, now]);
+
   const drinkData = useMemo(() => buildDrinkSeries(members, drinks, meId), [members, drinks, meId]);
   const bacData = useMemo(
-    () => buildBacSeries(members, drinks, meId, domain),
-    [members, drinks, meId, domain],
+    () => buildBacSeries(members, drinks, meId, bacDomain),
+    [members, drinks, meId, bacDomain],
   );
   const { series, hidden, ineligible, yTop } = metric === 'drinks' ? drinkData : bacData;
+  const domain = metric === 'drinks' ? fullDomain : bacDomain;
   const eligibleCount = members.length - ineligible;
 
   const plotWidth = Math.max(10, width - MARGIN.left - MARGIN.right);
@@ -445,7 +459,10 @@ function buildBacSeries(
     series: shown,
     hidden: all.filter((entry) => entry.points.length > 0).length - shown.length,
     ineligible: members.length - eligible.length,
-    yTop: bacYMax(Math.max(0, ...all.map((entry) => entry.value))),
+    // The peak actually reached in the window, not the current/final value —
+    // otherwise the axis shrinks as someone's estimate decays and clips the
+    // very peak it should be showing.
+    yTop: bacYMax(Math.max(0, ...all.flatMap((entry) => entry.points.map((point) => point.value)))),
   };
 }
 
