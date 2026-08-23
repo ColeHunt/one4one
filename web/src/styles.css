@@ -10,6 +10,7 @@
   --danger: #e05263;
   --ok: #4caf7d;
   --radius: 14px;
+  --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
 }
@@ -64,7 +65,7 @@ button:focus-visible {
 .app {
   max-width: 34rem;
   margin: 0 auto;
-  padding: 1rem 1rem calc(1rem + var(--safe-bottom));
+  padding: calc(1rem + var(--safe-top)) 1rem calc(1rem + var(--safe-bottom));
   min-height: 100%;
 }
 
