@@ -204,7 +204,14 @@ export function joinRoom(
   if (existing) {
     const cleanName = sanitiseName(name);
     if (cleanName !== existing.name) {
-      db.prepare('UPDATE members SET name = ? WHERE id = ?').run(cleanName, memberId);
+      // Scoped to this room too — id alone is a device's bearer token, not a
+      // unique row, so without room_code this would also rename that device
+      // in every other room it has joined.
+      db.prepare('UPDATE members SET name = ? WHERE id = ? AND room_code = ?').run(
+        cleanName,
+        memberId,
+        code,
+      );
       existing.name = cleanName;
     }
     touch(code, now);

@@ -84,6 +84,28 @@ describe('joining', () => {
     expect(sanitiseName(undefined)).toBe('Someone');
     expect(sanitiseName('a'.repeat(100))).toHaveLength(24);
   });
+
+  it('lets the same device belong to more than one room at once', () => {
+    const first = createRoom();
+    const second = createRoom();
+    joinRoom(first, ALICE, 'Alice');
+    expect(() => joinRoom(second, ALICE, 'Alice')).not.toThrow();
+
+    expect(getRoomState(first, ALICE).members).toHaveLength(1);
+    expect(getRoomState(second, ALICE).members).toHaveLength(1);
+  });
+
+  it('renaming on rejoin only touches the room being rejoined', () => {
+    const first = createRoom();
+    const second = createRoom();
+    joinRoom(first, ALICE, 'Alice');
+    joinRoom(second, ALICE, 'Alice');
+
+    joinRoom(second, ALICE, 'Ali');
+
+    expect(getRoomState(second, ALICE).members[0]!.name).toBe('Ali');
+    expect(getRoomState(first, ALICE).members[0]!.name).toBe('Alice');
+  });
 });
 
 describe('drinks', () => {
