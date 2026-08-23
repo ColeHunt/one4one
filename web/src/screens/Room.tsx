@@ -6,6 +6,7 @@ import { Leaderboard } from '../components/Leaderboard.js';
 import { MeCard } from '../components/MeCard.js';
 import { MemberDrinksSheet } from '../components/MemberDrinksSheet.js';
 import { MemberGamesSheet } from '../components/MemberGamesSheet.js';
+import { NightRecap } from '../components/NightRecap.js';
 import { ProfileSheet } from '../components/ProfileSheet.js';
 import { ReportMatchSheet } from '../components/ReportMatchSheet.js';
 import { Timeline } from '../components/Timeline.js';
@@ -40,6 +41,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
   } = useRoom(roomCode, memberId, name);
   const [showProfile, setShowProfile] = useState(false);
   const [showReportMatch, setShowReportMatch] = useState(false);
+  const [showRecap, setShowRecap] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWatch, setCopiedWatch] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -168,6 +170,20 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
             </button>
           </div>
         )}
+        {room && (
+          <div className="row between">
+            <p className="tiny muted" style={{ margin: 0 }}>
+              See the whole night — drinks, peak BAC, and game records — in one place.
+            </p>
+            <button
+              className="btn btn-ghost tiny"
+              style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+              onClick={() => setShowRecap(true)}
+            >
+              Recap
+            </button>
+          </div>
+        )}
       </div>
 
       {!room ? (
@@ -241,6 +257,17 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
           meId={memberId}
           onRetract={retractMatch}
           onClose={() => setSelectedGamesMemberId(null)}
+        />
+      )}
+
+      {showRecap && room && (
+        <NightRecap
+          members={room.members}
+          drinks={drinks}
+          matches={matches}
+          meId={memberId}
+          now={now}
+          onClose={() => setShowRecap(false)}
         />
       )}
 

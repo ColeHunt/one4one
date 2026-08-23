@@ -123,6 +123,53 @@ export function estimateBac(drinks: Drink[], profile: BacProfile, now: number): 
   return bac;
 }
 
+/**
+ * Times to evaluate BAC across [start, end]: `sampleCount` even steps, plus
+ * the instant before and the instant of every drink in range. A drink is a
+ * jump, not a slope, so sampling right around it keeps that jump crisp
+ * instead of it being smoothed away between two widely spaced regular steps.
+ */
+export function bacSampleTimes(
+  drinks: Drink[],
+  start: number,
+  end: number,
+  sampleCount = 60,
+): number[] {
+  const span = Math.max(1, end - start);
+  const times = new Set<number>();
+  for (let i = 0; i <= sampleCount; i += 1) {
+    times.add(Math.round(start + (span * i) / sampleCount));
+  }
+  for (const drink of drinks) {
+    if (drink.consumedAt < start || drink.consumedAt > end) continue;
+    times.add(Math.max(start, drink.consumedAt - 1));
+    times.add(drink.consumedAt);
+  }
+  times.add(end);
+  return [...times].sort((a, b) => a - b);
+}
+
+/**
+ * Highest BAC estimate reached anywhere in [start, end] — not the value at
+ * either endpoint. A peak reached mid-window and since decayed still counts;
+ * that's the whole point of a peak. Null with no weight, same contract as
+ * estimateBac, never a guess.
+ */
+export function peakBac(
+  drinks: Drink[],
+  profile: BacProfile,
+  start: number,
+  end: number,
+): number | null {
+  if (profile.weightKg == null) return null;
+  let peak = 0;
+  for (const t of bacSampleTimes(drinks, start, end)) {
+    const value = estimateBac(drinks, profile, t) ?? 0;
+    if (value > peak) peak = value;
+  }
+  return peak;
+}
+
 /** Hours until an estimate reaches zero at the fixed elimination rate. */
 export function hoursUntilSober(bac: number): number {
   if (bac <= 0) return 0;

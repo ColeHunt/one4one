@@ -4,6 +4,7 @@ import { GamesScoreboard } from '../components/GamesScoreboard.js';
 import { Leaderboard } from '../components/Leaderboard.js';
 import { MemberDrinksSheet } from '../components/MemberDrinksSheet.js';
 import { MemberGamesSheet } from '../components/MemberGamesSheet.js';
+import { NightRecap } from '../components/NightRecap.js';
 import { Timeline } from '../components/Timeline.js';
 import { useWatch } from '../lib/useWatch.js';
 
@@ -30,6 +31,7 @@ export function WatchRoom({ token, onLeave }: WatchRoomProps) {
   const { status, state, fatalError } = useWatch(token);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedGamesMemberId, setSelectedGamesMemberId] = useState<string | null>(null);
+  const [showRecap, setShowRecap] = useState(false);
 
   const drinks = state?.drinks ?? [];
   const matches = state?.matches ?? [];
@@ -90,12 +92,23 @@ export function WatchRoom({ token, onLeave }: WatchRoomProps) {
         </span>
       </header>
 
-      <div className="card">
-        <div className="tiny muted">Watching</div>
-        <p className="tiny muted" style={{ margin: '0.3rem 0 0' }}>
-          You're viewing this room live. You can't log drinks, report games, or see the room code
-          from here.
-        </p>
+      <div className="card row between">
+        <div>
+          <div className="tiny muted">Watching</div>
+          <p className="tiny muted" style={{ margin: '0.3rem 0 0' }}>
+            You're viewing this room live. You can't log drinks, report games, or see the room code
+            from here.
+          </p>
+        </div>
+        {state && (
+          <button
+            className="btn btn-ghost tiny"
+            style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+            onClick={() => setShowRecap(true)}
+          >
+            Recap
+          </button>
+        )}
       </div>
 
       {!state ? (
@@ -146,6 +159,17 @@ export function WatchRoom({ token, onLeave }: WatchRoomProps) {
           meId={NOBODY}
           onRetract={() => {}}
           onClose={() => setSelectedGamesMemberId(null)}
+        />
+      )}
+
+      {showRecap && (
+        <NightRecap
+          members={members}
+          drinks={drinks}
+          matches={matches}
+          meId={NOBODY}
+          now={now}
+          onClose={() => setShowRecap(false)}
         />
       )}
     </div>

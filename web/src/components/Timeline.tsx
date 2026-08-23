@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { estimateBac } from '@shared/drinks.js';
+import { bacSampleTimes, estimateBac } from '@shared/drinks.js';
 import type { Drink, Member } from '@shared/types.js';
 import { formatBac, formatClock, formatStandardDrinks } from '../lib/format.js';
 
@@ -404,9 +404,6 @@ function buildDrinkSeries(members: Member[], drinks: Drink[], meId: string): Ser
   };
 }
 
-/** Regular samples across the domain; drink moments are added on top of these. */
-const BAC_SAMPLE_COUNT = 60;
-
 function buildBacSeries(
   members: Member[],
   drinks: Drink[],
@@ -417,30 +414,16 @@ function buildBacSeries(
   // themselves (see rooms.ts), so an estimate for them literally cannot be
   // computed here — this mirrors the same rule the leaderboard applies.
   const eligible = members.filter((member) => member.shareBac && member.weightKg != null);
-  const span = Math.max(1, domain.end - domain.start);
 
   const all: Series[] = eligible.map((member) => {
     const theirs = drinks.filter((drink) => drink.memberId === member.id);
     if (theirs.length === 0) return { member, points: [], value: 0, lastDrinkAt: 0 };
 
     const profile = { weightKg: member.weightKg, sex: member.sex };
-    const sampleTimes = new Set<number>();
-    for (let i = 0; i <= BAC_SAMPLE_COUNT; i += 1) {
-      sampleTimes.add(Math.round(domain.start + (span * i) / BAC_SAMPLE_COUNT));
-    }
-    // A drink is a jump, not a slope — sampling the instant before and the
-    // instant of each drink keeps that jump crisp instead of smoothing it
-    // away between two widely spaced regular samples.
-    for (const drink of theirs) {
-      if (drink.consumedAt < domain.start || drink.consumedAt > domain.end) continue;
-      sampleTimes.add(Math.max(domain.start, drink.consumedAt - 1));
-      sampleTimes.add(drink.consumedAt);
-    }
-    sampleTimes.add(domain.end);
-
-    const points = [...sampleTimes]
-      .sort((a, b) => a - b)
-      .map((t) => ({ t, value: estimateBac(theirs, profile, t) ?? 0 }));
+    const points = bacSampleTimes(theirs, domain.start, domain.end).map((t) => ({
+      t,
+      value: estimateBac(theirs, profile, t) ?? 0,
+    }));
 
     return {
       member,
