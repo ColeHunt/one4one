@@ -10,6 +10,7 @@ import {
   getWatchState,
   joinRoom,
   removeDrink,
+  renameRoom,
   reopenRoom,
   reportMatch,
   resolveWatchToken,
@@ -186,6 +187,13 @@ function handleMessage(session: Session, raw: string): void {
       case 'reopen_room': {
         const { roomCode, memberId } = requireJoined(session);
         reopenRoom(roomCode, memberId, now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'rename_room': {
+        const { roomCode, memberId } = requireJoined(session);
+        renameRoom(roomCode, memberId, String(message.name ?? ''), now);
         broadcastRoom(roomCode);
         return;
       }

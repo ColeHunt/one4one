@@ -49,6 +49,14 @@ export function sanitiseName(input: unknown): string {
   return name.slice(0, MAX_NAME_LENGTH) || 'Someone';
 }
 
+const MAX_ROOM_NAME_LENGTH = 40;
+
+/** Unlike a member's name, a room name is optional — null clears it back to just the code. */
+export function sanitiseRoomName(input: unknown): string | null {
+  const name = typeof input === 'string' ? input.replace(/\s+/g, ' ').trim() : '';
+  return name ? name.slice(0, MAX_ROOM_NAME_LENGTH) : null;
+}
+
 function touch(code: string, now: number): number {
   const db = getDb();
   db.prepare('UPDATE rooms SET rev = rev + 1, last_active_at = ? WHERE code = ?').run(now, code);
@@ -96,7 +104,37 @@ export function reopenRoom(code: string, memberId: string, now = Date.now()): vo
   touch(code, now);
 }
 
-export function createRoom(now = Date.now()): string {
+function roomNameFor(code: string): string | null {
+  const row = getDb().prepare('SELECT name FROM room_names WHERE room_code = ?').get(code) as
+    | { name: string }
+    | undefined;
+  return row?.name ?? null;
+}
+
+function setRoomName(code: string, name: string | null): void {
+  const db = getDb();
+  if (name == null) {
+    db.prepare('DELETE FROM room_names WHERE room_code = ?').run(code);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO room_names (room_code, name, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(room_code) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
+  ).run(code, name, Date.now());
+}
+
+/**
+ * Renames a room, or clears its name back to just the code with a blank
+ * input. Anyone in the room can — a label like this is cosmetic, not part of
+ * the frozen log, so it works even while the room is closed.
+ */
+export function renameRoom(code: string, memberId: string, name: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  setRoomName(code, sanitiseRoomName(name));
+  touch(code, now);
+}
+
+export function createRoom(now = Date.now(), name?: string): string {
   const db = getDb();
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const code = generateRoomCode();
@@ -112,6 +150,8 @@ export function createRoom(now = Date.now()): string {
       code,
       now,
     );
+    const cleanName = sanitiseRoomName(name);
+    if (cleanName) setRoomName(code, cleanName);
     return code;
   }
   throw new RoomError('bad_request', 'Could not allocate a room code');
@@ -425,6 +465,7 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
     matches: matchRows.map(toMatch),
     watchToken: watchTokenFor(code),
     closedAt: closedAtFor(code),
+    name: roomNameFor(code),
   };
 }
 
@@ -463,6 +504,7 @@ export function getWatchState(code: string): WatchState {
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
     closedAt: closedAtFor(code),
+    name: roomNameFor(code),
   };
 }
 
@@ -479,6 +521,8 @@ export function purgeStaleRooms(ttlHours = config.roomTtlHours, now = Date.now()
   db.prepare('DELETE FROM room_watch_tokens WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM room_closures WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM room_names WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM members WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);

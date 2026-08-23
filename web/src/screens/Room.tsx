@@ -41,6 +41,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
     updateProfile,
     closeRoom,
     reopenRoom,
+    renameRoom,
   } = useRoom(roomCode, memberId, name);
   const closed = room?.closedAt != null;
   const [showProfile, setShowProfile] = useState(false);
@@ -48,6 +49,8 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
   const [showRecap, setShowRecap] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWatch, setCopiedWatch] = useState(false);
+  const [editingRoomName, setEditingRoomName] = useState(false);
+  const [roomNameDraft, setRoomNameDraft] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedGamesMemberId, setSelectedGamesMemberId] = useState<string | null>(null);
 
@@ -151,6 +154,56 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
       </header>
 
       <div className="card stack">
+        {room &&
+          (editingRoomName ? (
+            <form
+              className="row"
+              style={{ gap: '0.4rem' }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                renameRoom(roomNameDraft);
+                setEditingRoomName(false);
+              }}
+            >
+              <input
+                value={roomNameDraft}
+                onChange={(event) => setRoomNameDraft(event.target.value)}
+                placeholder="Name this round"
+                maxLength={40}
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button
+                type="submit"
+                className="btn btn-ghost tiny"
+                style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost tiny"
+                style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+                onClick={() => setEditingRoomName(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => {
+                setRoomNameDraft(room.name ?? '');
+                setEditingRoomName(true);
+              }}
+              style={{ textAlign: 'left', padding: 0, display: 'block' }}
+              aria-label="Rename this round"
+            >
+              <strong style={{ fontSize: '1.05rem' }}>{room.name ?? 'Name this round'}</strong>{' '}
+              <span className="muted tiny" aria-hidden="true">
+                ✏️
+              </span>
+            </button>
+          ))}
         <div className="row between">
           <div>
             <div className="row" style={{ gap: '0.5rem' }}>

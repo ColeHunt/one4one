@@ -28,6 +28,7 @@ export interface RoomView {
   updateProfile: (patch: ProfilePatch) => void;
   closeRoom: () => void;
   reopenRoom: () => void;
+  renameRoom: (name: string) => void;
   dismissError: () => void;
 }
 
@@ -172,6 +173,10 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     socketRef.current?.send({ t: 'reopen_room' });
   }, []);
 
+  const renameRoom = useCallback((name: string) => {
+    socketRef.current?.send({ t: 'rename_room', name });
+  }, []);
+
   const matches = room?.matches ?? [];
 
   const drinks = useMemo(() => {
@@ -203,6 +208,7 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     updateProfile,
     closeRoom,
     reopenRoom,
+    renameRoom,
     dismissError,
   };
 }

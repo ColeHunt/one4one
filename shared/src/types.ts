@@ -55,6 +55,8 @@ export interface RoomState {
   watchToken: string;
   /** Epoch ms the room was closed, or null while open. Closing freezes logging; reopening is reversible by anyone in the room. */
   closedAt: number | null;
+  /** Optional label like "Jake's Birthday". Null until someone sets one. */
+  name: string | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export interface WatchState {
   drinks: Drink[];
   matches: Match[];
   closedAt: number | null;
+  name: string | null;
 }
 
 /** Fields a member is allowed to change about themselves. */
@@ -107,6 +110,7 @@ export type ClientMessage =
   | { t: 'update_profile'; patch: ProfilePatch }
   | { t: 'close_room' }
   | { t: 'reopen_room' }
+  | { t: 'rename_room'; name: string }
   | { t: 'ping' };
 
 export type ServerMessage =

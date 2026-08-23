@@ -95,5 +95,13 @@ function migrate(instance: Db): void {
       closed_at  INTEGER NOT NULL,
       closed_by  TEXT
     );
+
+    -- Presence of a row means the room has a custom name; absence falls back
+    -- to just the code, same idiom as room_closures.
+    CREATE TABLE IF NOT EXISTS room_names (
+      room_code  TEXT PRIMARY KEY REFERENCES rooms(code) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 }

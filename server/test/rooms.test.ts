@@ -11,6 +11,7 @@ import {
   joinRoom,
   purgeStaleRooms,
   removeDrink,
+  renameRoom,
   reopenRoom,
   reportMatch,
   resolveWatchToken,
@@ -549,6 +550,71 @@ describe('closing', () => {
     const code = createRoom(now - 72 * 3_600_000);
     joinRoom(code, ALICE, 'Alice', now - 72 * 3_600_000);
     closeRoom(code, ALICE, now - 72 * 3_600_000);
+
+    expect(purgeStaleRooms(48, now)).toBe(1);
+    expect(() => getRoomState(code, ALICE)).toThrow(RoomError);
+  });
+});
+
+describe('naming', () => {
+  it('starts with no name', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    expect(getRoomState(code, ALICE).name).toBeNull();
+    expect(getWatchState(code).name).toBeNull();
+  });
+
+  it('can be named at creation, trimmed and capped', () => {
+    const code = createRoom(Date.now(), `  Jake's ${'birthday '.repeat(10)} `);
+    joinRoom(code, ALICE, 'Alice');
+    const name = getRoomState(code, ALICE).name!;
+    expect(name.length).toBeLessThanOrEqual(40);
+    expect(name.startsWith("Jake's")).toBe(true);
+    expect(name.endsWith(' ')).toBe(false);
+  });
+
+  it('ignores a blank name at creation', () => {
+    const code = createRoom(Date.now(), '   ');
+    joinRoom(code, ALICE, 'Alice');
+    expect(getRoomState(code, ALICE).name).toBeNull();
+  });
+
+  it('lets anyone in the room rename it, and the change shows to everyone', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    renameRoom(code, BOB, 'Game night');
+
+    expect(getRoomState(code, ALICE).name).toBe('Game night');
+    expect(getWatchState(code).name).toBe('Game night');
+  });
+
+  it('rejects renaming from someone not in the room', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    expect(() => renameRoom(code, STRANGER, 'Nope')).toThrow(RoomError);
+    expect(getRoomState(code, ALICE).name).toBeNull();
+  });
+
+  it('clears the name back to null with a blank rename', () => {
+    const code = createRoom(Date.now(), 'Game night');
+    joinRoom(code, ALICE, 'Alice');
+    renameRoom(code, ALICE, '   ');
+    expect(getRoomState(code, ALICE).name).toBeNull();
+  });
+
+  it('works even while the room is closed — a label is not part of the frozen log', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    closeRoom(code, ALICE);
+    expect(() => renameRoom(code, ALICE, 'Game night')).not.toThrow();
+    expect(getRoomState(code, ALICE).name).toBe('Game night');
+  });
+
+  it('purges a name along with its room', () => {
+    const now = Date.now();
+    const code = createRoom(now - 72 * 3_600_000, 'Game night');
+    joinRoom(code, ALICE, 'Alice', now - 72 * 3_600_000);
 
     expect(purgeStaleRooms(48, now)).toBe(1);
     expect(() => getRoomState(code, ALICE)).toThrow(RoomError);

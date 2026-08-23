@@ -94,6 +94,7 @@ export function WatchRoom({ token, onLeave }: WatchRoomProps) {
 
       <div className="card row between">
         <div>
+          {state?.name && <strong style={{ fontSize: '1.05rem' }}>{state.name}</strong>}
           <div className="row" style={{ gap: '0.5rem' }}>
             <div className="tiny muted">Watching</div>
             {state?.closedAt != null && <span className="closed-tag">Closed</span>}
