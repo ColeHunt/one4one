@@ -53,6 +53,10 @@ export interface RoomState {
   matches: Match[];
   /** Builds the /watch/:token spectator link. Members only — never sent to a spectator. */
   watchToken: string;
+  /** Epoch ms the room was closed, or null while open. Closing freezes logging; reopening is reversible by anyone in the room. */
+  closedAt: number | null;
+  /** Optional label like "Jake's Birthday". Null until someone sets one. */
+  name: string | null;
 }
 
 /**
@@ -66,6 +70,8 @@ export interface WatchState {
   members: Member[];
   drinks: Drink[];
   matches: Match[];
+  closedAt: number | null;
+  name: string | null;
 }
 
 /** Fields a member is allowed to change about themselves. */
@@ -102,6 +108,9 @@ export type ClientMessage =
   | { t: 'report_match'; match: NewMatch }
   | { t: 'retract_match'; matchId: string }
   | { t: 'update_profile'; patch: ProfilePatch }
+  | { t: 'close_room' }
+  | { t: 'reopen_room' }
+  | { t: 'rename_room'; name: string }
   | { t: 'ping' };
 
 export type ServerMessage =
@@ -119,4 +128,5 @@ export type ServerErrorCode =
   | 'too_many_drinks'
   | 'too_many_matches'
   | 'invalid_watch_link'
-  | 'too_many_spectators';
+  | 'too_many_spectators'
+  | 'room_closed';

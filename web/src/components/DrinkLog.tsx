@@ -7,9 +7,11 @@ interface DrinkLogProps {
   members: Member[];
   meId: string;
   onUndo: (drinkId: string) => void;
+  /** Once a room is closed, logging is frozen — nothing left to undo. */
+  closed?: boolean;
 }
 
-export function DrinkLog({ drinks, members, meId, onUndo }: DrinkLogProps) {
+export function DrinkLog({ drinks, members, meId, onUndo, closed = false }: DrinkLogProps) {
   if (drinks.length === 0) {
     return (
       <div className="card">
@@ -42,7 +44,7 @@ export function DrinkLog({ drinks, members, meId, onUndo }: DrinkLogProps) {
             </span>
             <span className="row" style={{ gap: '0.5rem' }}>
               <span className="muted tiny">{formatClock(drink.consumedAt)}</span>
-              {drink.memberId === meId && (
+              {drink.memberId === meId && !closed && (
                 <button
                   className="btn btn-ghost tiny"
                   style={{ minHeight: 32, padding: '0.2rem 0.55rem' }}

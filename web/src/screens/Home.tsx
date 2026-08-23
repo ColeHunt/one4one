@@ -8,6 +8,7 @@ interface HomeProps {
 
 export function Home({ initialName, onEnter }: HomeProps) {
   const [name, setName] = useState(initialName);
+  const [roomName, setRoomName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,11 @@ export function Home({ initialName, onEnter }: HomeProps) {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/rooms', { method: 'POST' });
+      const response = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: roomName.trim() || undefined }),
+      });
       if (!response.ok) throw new Error('Could not start a room');
       const { code: newCode } = (await response.json()) as { code: string };
       onEnter(newCode, displayName);
@@ -74,6 +79,15 @@ export function Home({ initialName, onEnter }: HomeProps) {
       </div>
 
       <div className="card stack">
+        <label className="field">
+          <span>Round name (optional)</span>
+          <input
+            value={roomName}
+            onChange={(event) => setRoomName(event.target.value)}
+            placeholder="Jake's birthday"
+            maxLength={40}
+          />
+        </label>
         <button className="btn btn-primary btn-full" onClick={startRoom} disabled={busy}>
           Start a round
         </button>

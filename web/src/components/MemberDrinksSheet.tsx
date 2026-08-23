@@ -9,9 +9,18 @@ interface MemberDrinksSheetProps {
   meId: string;
   onUndo: (drinkId: string) => void;
   onClose: () => void;
+  /** Once a room is closed, logging is frozen — nothing left to undo. */
+  closed?: boolean;
 }
 
-export function MemberDrinksSheet({ member, drinks, meId, onUndo, onClose }: MemberDrinksSheetProps) {
+export function MemberDrinksSheet({
+  member,
+  drinks,
+  meId,
+  onUndo,
+  onClose,
+  closed = false,
+}: MemberDrinksSheetProps) {
   const isMe = member.id === meId;
   const sorted = [...drinks].sort((a, b) => b.consumedAt - a.consumedAt);
 
@@ -65,7 +74,7 @@ export function MemberDrinksSheet({ member, drinks, meId, onUndo, onClose }: Mem
                     </span>
                     <span className="row" style={{ gap: '0.5rem' }}>
                       <span className="muted tiny">{formatClock(drink.consumedAt)}</span>
-                      {isMe && (
+                      {isMe && !closed && (
                         <button
                           className="btn btn-ghost tiny"
                           style={{ minHeight: 32, padding: '0.2rem 0.55rem' }}

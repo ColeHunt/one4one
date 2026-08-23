@@ -3,9 +3,11 @@ import {
   DRINK_TYPES,
   ELIMINATION_RATE_PER_HOUR,
   bacBand,
+  bacSampleTimes,
   estimateBac,
   hoursUntilSober,
   pace,
+  peakBac,
   resolveStandardDrinks,
   standardDrinks,
   totalStandardDrinks,
@@ -181,6 +183,78 @@ describe('estimateBac', () => {
 
   it('returns 0 for an empty log', () => {
     expect(estimateBac([], { weightKg: 80, sex: 'male' }, NOW)).toBe(0);
+  });
+});
+
+describe('bacSampleTimes', () => {
+  it('always includes the domain bounds', () => {
+    const times = bacSampleTimes([], NOW, NOW + 3 * HOUR);
+    expect(times[0]).toBe(NOW);
+    expect(times[times.length - 1]).toBe(NOW + 3 * HOUR);
+  });
+
+  it('is sorted ascending', () => {
+    const times = bacSampleTimes([drink({ consumedAt: NOW + HOUR })], NOW, NOW + 2 * HOUR);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+
+  it('produces roughly sampleCount evenly spaced points with no drinks', () => {
+    const times = bacSampleTimes([], NOW, NOW + 6 * HOUR, 60);
+    expect(times).toHaveLength(61);
+  });
+
+  it("includes a drink's exact instant and the instant before it", () => {
+    const at = NOW + HOUR;
+    const times = bacSampleTimes([drink({ consumedAt: at })], NOW, NOW + 2 * HOUR);
+    expect(times).toContain(at);
+    expect(times).toContain(at - 1);
+  });
+
+  it('excludes a drink outside the window', () => {
+    const times = bacSampleTimes([drink({ consumedAt: NOW - HOUR })], NOW, NOW + HOUR);
+    expect(times).not.toContain(NOW - HOUR);
+    expect(times).not.toContain(NOW - HOUR - 1);
+  });
+});
+
+describe('peakBac', () => {
+  it('returns null with no weight, same as estimateBac', () => {
+    expect(peakBac([drink()], { weightKg: null, sex: 'male' }, NOW - HOUR, NOW + HOUR)).toBeNull();
+  });
+
+  it('is 0 for a weighted member with no drinks in range', () => {
+    expect(peakBac([], { weightKg: 80, sex: 'male' }, NOW - HOUR, NOW + HOUR)).toBe(0);
+  });
+
+  it("matches estimateBac's value at the drink's own instant", () => {
+    const profile = { weightKg: 80, sex: 'male' as const };
+    const drinks = [drink({ consumedAt: NOW })];
+    const expected = estimateBac(drinks, profile, NOW)!;
+    expect(peakBac(drinks, profile, NOW - HOUR, NOW + HOUR)).toBeCloseTo(expected, 6);
+  });
+
+  it('finds a peak that has since decayed below the value at the end of the window', () => {
+    const profile = { weightKg: 80, sex: 'male' as const };
+    // One drink an hour before the window ends: peak is at consumption, and by
+    // the end of the window it has decayed — the peak must still be reported,
+    // not the smaller end-of-window value.
+    const drinks = [drink({ consumedAt: NOW })];
+    const peak = peakBac(drinks, profile, NOW - HOUR, NOW + HOUR)!;
+    const atEnd = estimateBac(drinks, profile, NOW + HOUR)!;
+    expect(peak).toBeGreaterThan(atEnd);
+    expect(peak).toBeCloseTo(estimateBac(drinks, profile, NOW)!, 6);
+  });
+
+  it('finds the higher of two separate peaks', () => {
+    const profile = { weightKg: 80, sex: 'male' as const };
+    const drinks = [
+      drink({ consumedAt: NOW, standardDrinks: 1 }),
+      drink({ consumedAt: NOW + HOUR, standardDrinks: 3 }),
+    ];
+    const peak = peakBac(drinks, profile, NOW - HOUR, NOW + 2 * HOUR)!;
+    const secondPeak = estimateBac(drinks, profile, NOW + HOUR)!;
+    expect(peak).toBeCloseTo(secondPeak, 6);
+    expect(peak).toBeGreaterThan(estimateBac(drinks, profile, NOW)!);
   });
 });
 

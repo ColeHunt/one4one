@@ -34,7 +34,8 @@ export class RoomError extends Error {
       | 'not_joined'
       | 'bad_request'
       | 'too_many_drinks'
-      | 'too_many_matches',
+      | 'too_many_matches'
+      | 'room_closed',
     message: string,
   ) {
     super(message);
@@ -48,6 +49,14 @@ export function sanitiseName(input: unknown): string {
   return name.slice(0, MAX_NAME_LENGTH) || 'Someone';
 }
 
+const MAX_ROOM_NAME_LENGTH = 40;
+
+/** Unlike a member's name, a room name is optional — null clears it back to just the code. */
+export function sanitiseRoomName(input: unknown): string | null {
+  const name = typeof input === 'string' ? input.replace(/\s+/g, ' ').trim() : '';
+  return name ? name.slice(0, MAX_ROOM_NAME_LENGTH) : null;
+}
+
 function touch(code: string, now: number): number {
   const db = getDb();
   db.prepare('UPDATE rooms SET rev = rev + 1, last_active_at = ? WHERE code = ?').run(now, code);
@@ -57,7 +66,75 @@ function touch(code: string, now: number): number {
   return row?.rev ?? 0;
 }
 
-export function createRoom(now = Date.now()): string {
+function closedAtFor(code: string): number | null {
+  const row = getDb().prepare('SELECT closed_at FROM room_closures WHERE room_code = ?').get(code) as
+    | { closed_at: number }
+    | undefined;
+  return row?.closed_at ?? null;
+}
+
+/** Rejects a mutation once the room has been closed — reopen it first. */
+function requireOpen(code: string): void {
+  if (closedAtFor(code) != null) {
+    throw new RoomError('room_closed', 'This room is closed. Reopen it to keep logging.');
+  }
+}
+
+/**
+ * Closes a room, freezing new drinks and game reports. Anyone in the room can
+ * close it — there is no "host" concept in this app, the same honor-system
+ * trust reportMatch/removeDrink already run on. Idempotent: closing an
+ * already-closed room is a no-op rather than an error.
+ */
+export function closeRoom(code: string, memberId: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  getDb()
+    .prepare(
+      `INSERT INTO room_closures (room_code, closed_at, closed_by) VALUES (?, ?, ?)
+       ON CONFLICT(room_code) DO NOTHING`,
+    )
+    .run(code, now, memberId);
+  touch(code, now);
+}
+
+/** Reopens a closed room. Anyone in the room can — a mis-tap isn't a dead end. */
+export function reopenRoom(code: string, memberId: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  getDb().prepare('DELETE FROM room_closures WHERE room_code = ?').run(code);
+  touch(code, now);
+}
+
+function roomNameFor(code: string): string | null {
+  const row = getDb().prepare('SELECT name FROM room_names WHERE room_code = ?').get(code) as
+    | { name: string }
+    | undefined;
+  return row?.name ?? null;
+}
+
+function setRoomName(code: string, name: string | null): void {
+  const db = getDb();
+  if (name == null) {
+    db.prepare('DELETE FROM room_names WHERE room_code = ?').run(code);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO room_names (room_code, name, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(room_code) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
+  ).run(code, name, Date.now());
+}
+
+/**
+ * Renames a room, or clears its name back to just the code with a blank
+ * input. Anyone in the room can — a label like this is cosmetic, not part of
+ * the frozen log, so it works even while the room is closed.
+ */
+export function renameRoom(code: string, memberId: string, name: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  setRoomName(code, sanitiseRoomName(name));
+  touch(code, now);
+}
+
+export function createRoom(now = Date.now(), name?: string): string {
   const db = getDb();
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const code = generateRoomCode();
@@ -73,6 +150,8 @@ export function createRoom(now = Date.now()): string {
       code,
       now,
     );
+    const cleanName = sanitiseRoomName(name);
+    if (cleanName) setRoomName(code, cleanName);
     return code;
   }
   throw new RoomError('bad_request', 'Could not allocate a room code');
@@ -171,6 +250,7 @@ export function addDrink(
 ): Drink {
   const db = getDb();
   if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  requireOpen(code);
 
   const kind = typeof input.kind === 'string' ? input.kind : '';
   const volumeMl = numberOrNull(input.volumeMl);
@@ -211,6 +291,7 @@ export function removeDrink(
   now = Date.now(),
 ): void {
   const db = getDb();
+  requireOpen(code);
   const result = db
     .prepare('DELETE FROM drinks WHERE id = ? AND room_code = ? AND member_id = ?')
     .run(drinkId, code, memberId);
@@ -235,6 +316,7 @@ export function reportMatch(
 ): Match {
   const db = getDb();
   if (!isMember(code, reporterId)) throw new RoomError('not_joined', 'Join the room first');
+  requireOpen(code);
 
   const gameKey = typeof input.gameKey === 'string' ? input.gameKey : '';
   if (!getGameType(gameKey)) throw new RoomError('bad_request', "That's not a game we know");
@@ -282,6 +364,7 @@ export function retractMatch(
   now = Date.now(),
 ): void {
   const db = getDb();
+  requireOpen(code);
   const result = db
     .prepare('DELETE FROM matches WHERE id = ? AND room_code = ? AND reported_by = ?')
     .run(matchId, code, memberId);
@@ -381,6 +464,8 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
     watchToken: watchTokenFor(code),
+    closedAt: closedAtFor(code),
+    name: roomNameFor(code),
   };
 }
 
@@ -418,6 +503,8 @@ export function getWatchState(code: string): WatchState {
     }),
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
+    closedAt: closedAtFor(code),
+    name: roomNameFor(code),
   };
 }
 
@@ -432,6 +519,10 @@ export function purgeStaleRooms(ttlHours = config.roomTtlHours, now = Date.now()
   db.prepare('DELETE FROM matches WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM room_watch_tokens WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM room_closures WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM room_names WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM members WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);

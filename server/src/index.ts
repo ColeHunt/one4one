@@ -32,8 +32,9 @@ export function createApp(): express.Express {
     res.json({ ok: true });
   });
 
-  app.post('/api/rooms', (_req, res) => {
-    const code = createRoom();
+  app.post('/api/rooms', (req, res) => {
+    const name = typeof req.body?.name === 'string' ? req.body.name : undefined;
+    const code = createRoom(undefined, name);
     res.status(201).json({ code });
   });
 

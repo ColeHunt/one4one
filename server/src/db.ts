@@ -85,5 +85,23 @@ function migrate(instance: Db): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_watch_tokens_room ON room_watch_tokens(room_code);
+
+    -- Presence of a row means the room is closed. A new table rather than a
+    -- column on rooms — migrate() here only ever CREATEs, it cannot ALTER an
+    -- existing table, so every schema change since the first release has used
+    -- this pattern instead of adding a column.
+    CREATE TABLE IF NOT EXISTS room_closures (
+      room_code  TEXT PRIMARY KEY REFERENCES rooms(code) ON DELETE CASCADE,
+      closed_at  INTEGER NOT NULL,
+      closed_by  TEXT
+    );
+
+    -- Presence of a row means the room has a custom name; absence falls back
+    -- to just the code, same idiom as room_closures.
+    CREATE TABLE IF NOT EXISTS room_names (
+      room_code  TEXT PRIMARY KEY REFERENCES rooms(code) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 }

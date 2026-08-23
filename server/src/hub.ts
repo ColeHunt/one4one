@@ -5,10 +5,13 @@ import { isValidId, isValidRoomCode, normaliseRoomCode } from './ids.js';
 import {
   RoomError,
   addDrink,
+  closeRoom,
   getRoomState,
   getWatchState,
   joinRoom,
   removeDrink,
+  renameRoom,
+  reopenRoom,
   reportMatch,
   resolveWatchToken,
   retractMatch,
@@ -170,6 +173,27 @@ function handleMessage(session: Session, raw: string): void {
       case 'update_profile': {
         const { roomCode, memberId } = requireJoined(session);
         updateProfile(roomCode, memberId, message.patch ?? {}, now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'close_room': {
+        const { roomCode, memberId } = requireJoined(session);
+        closeRoom(roomCode, memberId, now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'reopen_room': {
+        const { roomCode, memberId } = requireJoined(session);
+        reopenRoom(roomCode, memberId, now);
+        broadcastRoom(roomCode);
+        return;
+      }
+
+      case 'rename_room': {
+        const { roomCode, memberId } = requireJoined(session);
+        renameRoom(roomCode, memberId, String(message.name ?? ''), now);
         broadcastRoom(roomCode);
         return;
       }
