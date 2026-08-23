@@ -123,8 +123,20 @@ export function Home({ initialName, onEnter }: HomeProps) {
                 key={room.code}
                 className="btn btn-ghost btn-full"
                 onClick={() => onEnter(room.code, displayName)}
+                style={
+                  room.name
+                    ? { flexDirection: 'column', gap: '0.1rem', padding: '0.55rem 1rem' }
+                    : undefined
+                }
               >
-                {room.code}
+                {room.name ? (
+                  <>
+                    <span>{room.name}</span>
+                    <span className="tiny muted">{room.code}</span>
+                  </>
+                ) : (
+                  room.code
+                )}
               </button>
             ))}
           </div>

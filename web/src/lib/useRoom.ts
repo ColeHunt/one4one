@@ -62,7 +62,7 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
       onMessage: (message: ServerMessage) => {
         if (message.t === 'state') {
           setRoom((current) => (current && current.rev > message.room.rev ? current : message.room));
-          rememberRoom(message.room.code);
+          rememberRoom(message.room.code, message.room.name);
 
           const landedClientIds = new Set<string>();
           const serverIds = new Set<string>();

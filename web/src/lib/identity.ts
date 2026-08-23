@@ -47,6 +47,8 @@ export function storeName(name: string): void {
 export interface RecentRoom {
   code: string;
   lastSeen: number;
+  /** The room's name as of the last time this device saw it — may be stale. */
+  name?: string | null;
 }
 
 export function getRecentRooms(): RecentRoom[] {
@@ -62,7 +64,8 @@ export function getRecentRooms(): RecentRoom[] {
   }
 }
 
-export function rememberRoom(code: string): void {
+/** `name` is optional so callers that never see a room's name (none currently) can skip it. */
+export function rememberRoom(code: string, name?: string | null): void {
   const others = getRecentRooms().filter((entry) => entry.code !== code);
-  write(RECENT_KEY, JSON.stringify([{ code, lastSeen: Date.now() }, ...others].slice(0, 5)));
+  write(RECENT_KEY, JSON.stringify([{ code, lastSeen: Date.now(), name }, ...others].slice(0, 5)));
 }
