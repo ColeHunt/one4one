@@ -4,12 +4,14 @@ import { isValidRoomCode, normaliseRoomCode } from '../src/ids.js';
 import {
   RoomError,
   addDrink,
+  closeRoom,
   createRoom,
   getRoomState,
   getWatchState,
   joinRoom,
   purgeStaleRooms,
   removeDrink,
+  reopenRoom,
   reportMatch,
   resolveWatchToken,
   retractMatch,
@@ -453,5 +455,102 @@ describe('spectators', () => {
 
     expect(purgeStaleRooms(48, now)).toBe(1);
     expect(resolveWatchToken(token)).toBeNull();
+  });
+});
+
+describe('closing', () => {
+  it('starts open', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    expect(getRoomState(code, ALICE).closedAt).toBeNull();
+    expect(getWatchState(code).closedAt).toBeNull();
+  });
+
+  it('lets anyone in the room close it, and stamps who and when', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    const now = Date.now();
+    closeRoom(code, BOB, now);
+
+    expect(getRoomState(code, ALICE).closedAt).toBe(now);
+    expect(getWatchState(code).closedAt).toBe(now);
+  });
+
+  it('rejects closing from someone not in the room', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    expect(() => closeRoom(code, STRANGER)).toThrow(RoomError);
+    expect(getRoomState(code, ALICE).closedAt).toBeNull();
+  });
+
+  it('is idempotent — closing an already-closed room keeps the original timestamp', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    const first = Date.now();
+    closeRoom(code, ALICE, first);
+    closeRoom(code, ALICE, first + 60_000);
+    expect(getRoomState(code, ALICE).closedAt).toBe(first);
+  });
+
+  it('freezes drinks, undo, game reports and retractions while closed', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    const drink = addDrink(code, ALICE, { kind: 'beer' });
+    const match = reportMatch(code, ALICE, {
+      gameKey: 'beer_pong',
+      winnerIds: [ALICE],
+      loserIds: [BOB],
+    });
+    closeRoom(code, ALICE);
+
+    expect(() => addDrink(code, ALICE, { kind: 'beer' })).toThrow(/closed/);
+    expect(() => removeDrink(code, ALICE, drink.id)).toThrow(/closed/);
+    expect(() =>
+      reportMatch(code, ALICE, { gameKey: 'beer_pong', winnerIds: [ALICE], loserIds: [BOB] }),
+    ).toThrow(/closed/);
+    expect(() => retractMatch(code, ALICE, match.id)).toThrow(/closed/);
+
+    // Nothing was actually removed by the rejected calls.
+    const state = getRoomState(code, ALICE);
+    expect(state.drinks).toHaveLength(1);
+    expect(state.matches).toHaveLength(1);
+  });
+
+  it('lets anyone reopen a closed room, unfreezing it', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    joinRoom(code, BOB, 'Bob');
+    closeRoom(code, ALICE);
+
+    reopenRoom(code, BOB);
+    expect(getRoomState(code, ALICE).closedAt).toBeNull();
+    expect(() => addDrink(code, ALICE, { kind: 'beer' })).not.toThrow();
+  });
+
+  it('rejects reopening from someone not in the room', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    closeRoom(code, ALICE);
+    expect(() => reopenRoom(code, STRANGER)).toThrow(RoomError);
+    expect(getRoomState(code, ALICE).closedAt).not.toBeNull();
+  });
+
+  it('is a no-op to reopen a room that is already open', () => {
+    const code = createRoom();
+    joinRoom(code, ALICE, 'Alice');
+    expect(() => reopenRoom(code, ALICE)).not.toThrow();
+    expect(getRoomState(code, ALICE).closedAt).toBeNull();
+  });
+
+  it('purges a closure along with its room', () => {
+    const now = Date.now();
+    const code = createRoom(now - 72 * 3_600_000);
+    joinRoom(code, ALICE, 'Alice', now - 72 * 3_600_000);
+    closeRoom(code, ALICE, now - 72 * 3_600_000);
+
+    expect(purgeStaleRooms(48, now)).toBe(1);
+    expect(() => getRoomState(code, ALICE)).toThrow(RoomError);
   });
 });

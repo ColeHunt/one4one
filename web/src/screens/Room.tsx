@@ -10,6 +10,7 @@ import { NightRecap } from '../components/NightRecap.js';
 import { ProfileSheet } from '../components/ProfileSheet.js';
 import { ReportMatchSheet } from '../components/ReportMatchSheet.js';
 import { Timeline } from '../components/Timeline.js';
+import { formatClock } from '../lib/format.js';
 import { useRoom } from '../lib/useRoom.js';
 
 interface RoomProps {
@@ -38,7 +39,10 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
     reportMatch,
     retractMatch,
     updateProfile,
+    closeRoom,
+    reopenRoom,
   } = useRoom(roomCode, memberId, name);
+  const closed = room?.closedAt != null;
   const [showProfile, setShowProfile] = useState(false);
   const [showReportMatch, setShowReportMatch] = useState(false);
   const [showRecap, setShowRecap] = useState(false);
@@ -149,7 +153,10 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
       <div className="card stack">
         <div className="row between">
           <div>
-            <div className="tiny muted">Room code</div>
+            <div className="row" style={{ gap: '0.5rem' }}>
+              <div className="tiny muted">Room code</div>
+              {closed && <span className="closed-tag">Closed</span>}
+            </div>
             <div className="code-chip">{roomCode}</div>
           </div>
           <button className="btn" onClick={share}>
@@ -184,6 +191,29 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
             </button>
           </div>
         )}
+        {room && (
+          <div className="row between">
+            <p className="tiny muted" style={{ margin: 0 }}>
+              {closed
+                ? `Closed at ${formatClock(room.closedAt!)}. Reopen to log more.`
+                : 'Closing freezes drinks and games so the recap stays put.'}
+            </p>
+            <button
+              className="btn btn-ghost tiny"
+              style={{ minHeight: 32, padding: '0.2rem 0.6rem', flex: 'none' }}
+              onClick={() => {
+                if (closed) {
+                  reopenRoom();
+                } else {
+                  closeRoom();
+                  setShowRecap(true);
+                }
+              }}
+            >
+              {closed ? 'Reopen' : 'Close room'}
+            </button>
+          </div>
+        )}
       </div>
 
       {!room ? (
@@ -201,8 +231,9 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
               const last = [...myDrinks].sort((a, b) => b.consumedAt - a.consumedAt)[0];
               if (last) undoDrink(last.id);
             }}
+            closed={closed}
           />
-          <AddDrink onAdd={addDrink} />
+          {!closed && <AddDrink onAdd={addDrink} />}
           <Leaderboard
             members={room.members}
             drinks={drinks}
@@ -216,9 +247,16 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
             meId={memberId}
             onSelectMember={setSelectedGamesMemberId}
             onReportGame={() => setShowReportMatch(true)}
+            readOnly={closed}
           />
           <Timeline members={room.members} drinks={drinks} meId={memberId} now={now} />
-          <DrinkLog drinks={drinks} members={room.members} meId={memberId} onUndo={undoDrink} />
+          <DrinkLog
+            drinks={drinks}
+            members={room.members}
+            meId={memberId}
+            onUndo={undoDrink}
+            closed={closed}
+          />
         </>
       )}
 
@@ -238,6 +276,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
           meId={memberId}
           onUndo={undoDrink}
           onClose={() => setSelectedMemberId(null)}
+          closed={closed}
         />
       )}
 
@@ -257,6 +296,7 @@ export function Room({ roomCode, memberId, name, onLeave }: RoomProps) {
           meId={memberId}
           onRetract={retractMatch}
           onClose={() => setSelectedGamesMemberId(null)}
+          closed={closed}
         />
       )}
 

@@ -11,6 +11,8 @@ interface MemberGamesSheetProps {
   meId: string;
   onRetract: (matchId: string) => void;
   onClose: () => void;
+  /** Once a room is closed, reporting is frozen — nothing left to retract. */
+  closed?: boolean;
 }
 
 export function MemberGamesSheet({
@@ -20,6 +22,7 @@ export function MemberGamesSheet({
   meId,
   onRetract,
   onClose,
+  closed = false,
 }: MemberGamesSheetProps) {
   const isMe = member.id === meId;
   const overall = recordFor(matches, member.id);
@@ -93,7 +96,7 @@ export function MemberGamesSheet({
                     </span>
                     <span className="row" style={{ gap: '0.5rem' }}>
                       <span className="muted tiny">{formatClock(match.playedAt)}</span>
-                      {match.reportedBy === meId && (
+                      {match.reportedBy === meId && !closed && (
                         <button
                           className="btn btn-ghost tiny"
                           style={{ minHeight: 32, padding: '0.2rem 0.55rem' }}

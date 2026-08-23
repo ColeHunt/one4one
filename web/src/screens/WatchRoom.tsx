@@ -94,10 +94,14 @@ export function WatchRoom({ token, onLeave }: WatchRoomProps) {
 
       <div className="card row between">
         <div>
-          <div className="tiny muted">Watching</div>
+          <div className="row" style={{ gap: '0.5rem' }}>
+            <div className="tiny muted">Watching</div>
+            {state?.closedAt != null && <span className="closed-tag">Closed</span>}
+          </div>
           <p className="tiny muted" style={{ margin: '0.3rem 0 0' }}>
-            You're viewing this room live. You can't log drinks, report games, or see the room code
-            from here.
+            {state?.closedAt != null
+              ? "This room is closed — nobody's logging anything new."
+              : "You're viewing this room live. You can't log drinks, report games, or see the room code from here."}
           </p>
         </div>
         {state && (

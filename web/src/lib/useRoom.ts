@@ -26,6 +26,8 @@ export interface RoomView {
   reportMatch: (match: NewMatch) => void;
   retractMatch: (matchId: string) => void;
   updateProfile: (patch: ProfilePatch) => void;
+  closeRoom: () => void;
+  reopenRoom: () => void;
   dismissError: () => void;
 }
 
@@ -84,7 +86,11 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
           } else {
             setError(message.message);
             // A rejected drink must not linger as an optimistic entry.
-            if (message.code === 'bad_request' || message.code === 'too_many_drinks') {
+            if (
+              message.code === 'bad_request' ||
+              message.code === 'too_many_drinks' ||
+              message.code === 'room_closed'
+            ) {
               setPending([]);
             }
           }
@@ -158,6 +164,14 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     socketRef.current?.send({ t: 'retract_match', matchId });
   }, []);
 
+  const closeRoom = useCallback(() => {
+    socketRef.current?.send({ t: 'close_room' });
+  }, []);
+
+  const reopenRoom = useCallback(() => {
+    socketRef.current?.send({ t: 'reopen_room' });
+  }, []);
+
   const matches = room?.matches ?? [];
 
   const drinks = useMemo(() => {
@@ -187,6 +201,8 @@ export function useRoom(roomCode: string, memberId: string, name: string): RoomV
     reportMatch,
     retractMatch,
     updateProfile,
+    closeRoom,
+    reopenRoom,
     dismissError,
   };
 }

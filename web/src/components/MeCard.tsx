@@ -8,9 +8,11 @@ interface MeCardProps {
   now: number;
   onOpenProfile: () => void;
   onUndo: () => void;
+  /** Once a room is closed, logging is frozen — nothing left to undo. */
+  closed?: boolean;
 }
 
-export function MeCard({ me, myDrinks, now, onOpenProfile, onUndo }: MeCardProps) {
+export function MeCard({ me, myDrinks, now, onOpenProfile, onUndo, closed = false }: MeCardProps) {
   const standard = totalStandardDrinks(myDrinks);
   const bac = me ? estimateBac(myDrinks, { weightKg: me.weightKg, sex: me.sex }, now) : null;
   const band = bacBand(bac);
@@ -69,14 +71,16 @@ export function MeCard({ me, myDrinks, now, onOpenProfile, onUndo }: MeCardProps
         </p>
       )}
 
-      <button
-        className="btn btn-ghost btn-full btn-danger"
-        style={{ marginTop: '0.75rem' }}
-        onClick={onUndo}
-        disabled={myDrinks.length === 0}
-      >
-        Undo last drink
-      </button>
+      {!closed && (
+        <button
+          className="btn btn-ghost btn-full btn-danger"
+          style={{ marginTop: '0.75rem' }}
+          onClick={onUndo}
+          disabled={myDrinks.length === 0}
+        >
+          Undo last drink
+        </button>
+      )}
     </div>
   );
 }

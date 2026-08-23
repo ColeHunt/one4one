@@ -34,7 +34,8 @@ export class RoomError extends Error {
       | 'not_joined'
       | 'bad_request'
       | 'too_many_drinks'
-      | 'too_many_matches',
+      | 'too_many_matches'
+      | 'room_closed',
     message: string,
   ) {
     super(message);
@@ -55,6 +56,44 @@ function touch(code: string, now: number): number {
     | { rev: number }
     | undefined;
   return row?.rev ?? 0;
+}
+
+function closedAtFor(code: string): number | null {
+  const row = getDb().prepare('SELECT closed_at FROM room_closures WHERE room_code = ?').get(code) as
+    | { closed_at: number }
+    | undefined;
+  return row?.closed_at ?? null;
+}
+
+/** Rejects a mutation once the room has been closed — reopen it first. */
+function requireOpen(code: string): void {
+  if (closedAtFor(code) != null) {
+    throw new RoomError('room_closed', 'This room is closed. Reopen it to keep logging.');
+  }
+}
+
+/**
+ * Closes a room, freezing new drinks and game reports. Anyone in the room can
+ * close it — there is no "host" concept in this app, the same honor-system
+ * trust reportMatch/removeDrink already run on. Idempotent: closing an
+ * already-closed room is a no-op rather than an error.
+ */
+export function closeRoom(code: string, memberId: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  getDb()
+    .prepare(
+      `INSERT INTO room_closures (room_code, closed_at, closed_by) VALUES (?, ?, ?)
+       ON CONFLICT(room_code) DO NOTHING`,
+    )
+    .run(code, now, memberId);
+  touch(code, now);
+}
+
+/** Reopens a closed room. Anyone in the room can — a mis-tap isn't a dead end. */
+export function reopenRoom(code: string, memberId: string, now = Date.now()): void {
+  if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  getDb().prepare('DELETE FROM room_closures WHERE room_code = ?').run(code);
+  touch(code, now);
 }
 
 export function createRoom(now = Date.now()): string {
@@ -171,6 +210,7 @@ export function addDrink(
 ): Drink {
   const db = getDb();
   if (!isMember(code, memberId)) throw new RoomError('not_joined', 'Join the room first');
+  requireOpen(code);
 
   const kind = typeof input.kind === 'string' ? input.kind : '';
   const volumeMl = numberOrNull(input.volumeMl);
@@ -211,6 +251,7 @@ export function removeDrink(
   now = Date.now(),
 ): void {
   const db = getDb();
+  requireOpen(code);
   const result = db
     .prepare('DELETE FROM drinks WHERE id = ? AND room_code = ? AND member_id = ?')
     .run(drinkId, code, memberId);
@@ -235,6 +276,7 @@ export function reportMatch(
 ): Match {
   const db = getDb();
   if (!isMember(code, reporterId)) throw new RoomError('not_joined', 'Join the room first');
+  requireOpen(code);
 
   const gameKey = typeof input.gameKey === 'string' ? input.gameKey : '';
   if (!getGameType(gameKey)) throw new RoomError('bad_request', "That's not a game we know");
@@ -282,6 +324,7 @@ export function retractMatch(
   now = Date.now(),
 ): void {
   const db = getDb();
+  requireOpen(code);
   const result = db
     .prepare('DELETE FROM matches WHERE id = ? AND room_code = ? AND reported_by = ?')
     .run(matchId, code, memberId);
@@ -381,6 +424,7 @@ export function getRoomState(code: string, viewerId: string | null): RoomState {
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
     watchToken: watchTokenFor(code),
+    closedAt: closedAtFor(code),
   };
 }
 
@@ -418,6 +462,7 @@ export function getWatchState(code: string): WatchState {
     }),
     drinks: drinkRows.map(toDrink),
     matches: matchRows.map(toMatch),
+    closedAt: closedAtFor(code),
   };
 }
 
@@ -432,6 +477,8 @@ export function purgeStaleRooms(ttlHours = config.roomTtlHours, now = Date.now()
   db.prepare('DELETE FROM matches WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM room_watch_tokens WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
+    .run(cutoff);
+  db.prepare('DELETE FROM room_closures WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
   db.prepare('DELETE FROM members WHERE room_code IN (SELECT code FROM rooms WHERE last_active_at < ?)')
     .run(cutoff);
